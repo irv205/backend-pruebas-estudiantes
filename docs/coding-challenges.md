@@ -1245,7 +1245,7 @@ async function waitForExport(id, token, maxAttempts = 30) {
 
 ### Proyecto final sugerido
 
-Construye una aplicación web, Android, iOS o de escritorio que combine **los niveles 1 a 5** (todo lo que existe hoy). Mínimo imprescindible:
+Construye una aplicación web, Android, iOS o de escritorio que combine **los niveles 1 a 6** (todo lo que existe hoy). Mínimo imprescindible:
 
 1. Catálogo público con listado paginado, búsqueda, orden y estado vacío.
 2. CRUD de productos en un sandbox anónimo con `x-space-id`, control de `version` y manejo de `429`.
@@ -1254,7 +1254,8 @@ Construye una aplicación web, Android, iOS o de escritorio que combine **los ni
 5. Categorías, tareas con subtareas y transiciones, y archivos multipart.
 6. Un espacio de equipo con al menos dos roles demostrados.
 7. Carrito con totales del servidor, pedido idempotente y pago simulado con reposición de stock.
-8. Manejo visible de errores con `error.code` y `requestId`, y limpieza de escenarios del simulador.
+8. Bandeja de notificaciones y contador de no leídas, eventos en tiempo real por `/socket.io` (chat y replay con `lastEventId`) y al menos una exportación CSV descargada tras hacer polling de su estado.
+9. Manejo visible de errores con `error.code` y `requestId`, y limpieza de escenarios del simulador.
 
 **Entrega:** código cliente, capturas de los flujos, un `README` con instrucciones de arranque y el registro de evidencias descrito en la sección 7. No incluyas tokens ni contraseñas en capturas.
 
@@ -1285,7 +1286,8 @@ Comprobación rápida de limpieza en Postman: `Simulator › Desactivar todos lo
 curl -X PATCH -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
   -d '{"slowResponse":false,"timeout":false,"temporary503":false,"sessionExpired":false,
        "insufficientPermission":false,"emptyList":false,"largeVolume":false,
-       "concurrentEdit":false,"rateLimit":false,"invalidFile":false,"duplicateOrder":false}' \
+       "concurrentEdit":false,"rateLimit":false,"invalidFile":false,"duplicateOrder":false,
+       "failedAsyncJob":false}' \
   http://localhost:3100/api/v1/spaces/me/scenarios
 ```
 
@@ -1293,7 +1295,7 @@ curl -X PATCH -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/j
 
 ## 5. Rúbrica de evaluación simple
 
-Cada dimensión se puntúa de **0 a 4** por nivel. La nota del nivel es el promedio; el proyecto final promedia los niveles 1-4.
+Cada dimensión se puntúa de **0 a 4** por nivel. La nota del nivel es el promedio; el proyecto final promedia los niveles 1-6 (si no entregas el Nivel 6, indícalo explícitamente en la tabla de challenges resueltos).
 
 | Puntuación | Funcional | Errores | Persistencia | Aislamiento | Documentación |
 |---|---|---|---|---|---|

@@ -135,7 +135,7 @@ Forma recomendada (espera a migraciones, healthcheck y seed idempotente automát
 - **macOS/Linux:** los scripts `.sh` funcionan tal cual (`.gitattributes` garantiza finales de línea LF).
 - Alternativa manual en cualquier sistema: `docker compose up -d --build`, esperar a `migrate` con `docker compose logs -f migrate` y ejecutar `docker compose exec -T app npm run prisma:seed`.
 
-`docker compose` espera a PostgreSQL *healthy*, ejecuta las migraciones (`migrate`, una sola vez) y solo después arranca la API. El código se monta desde el host y `start:dev` recarga cambios; `node_modules` vive en un volumen anónimo separado. El seed es **idempotente** (IDs/slugs fijos + `upsert`): incluye la demo pública (8 productos en 3 categorías), el espacio personal (3 categorías, 2 productos, 2 notas y 3 tareas con subtareas) y el usuario de prueba. Repetirlo no duplica nada.
+`docker compose` espera a PostgreSQL y Redis *healthy* (Redis es opcional con `JOBS_QUEUE_MODE=inline`), ejecuta las migraciones (`migrate`, una sola vez) y solo después arranca la API y el `worker`. El código se monta desde el host y `start:dev` recarga cambios; `node_modules` vive en un volumen anónimo separado. Con `docker compose ps` deben aparecer `postgres`, `redis`, `mailpit`, `migrate` (`Exited(0)`), `app` (*healthy*) y `worker` (*up*, sin puerto HTTP). El seed es **idempotente** (IDs/slugs fijos + `upsert`): incluye la demo pública (8 productos en 3 categorías), el espacio personal (3 categorías, 2 productos, 2 notas y 3 tareas con subtareas) y el usuario de prueba. Repetirlo no duplica nada.
 
 ### 5. Verificación
 
@@ -218,12 +218,12 @@ Los scripts canónicos están en `scripts/`; en la raíz hay wrappers para ejecu
 | Regenerar cliente Prisma | `docker compose exec app npm run prisma:generate` | Igual | Tras editar `prisma/schema.prisma` |
 | Pruebas unitarias | `docker compose exec app npm test` | Igual | `npm test` con Node 20.18.1 en el host |
 | Pruebas e2e (`practicas_test`) | Ver [Ejecutar pruebas](#ejecutar-pruebas) | Igual; **nunca** contra la BD de estudiantes | Igual |
-| Ver logs | `docker compose logs -f app` | Igual | `docker compose logs --tail=100 migrate` para migraciones |
-| Ver estado | `docker compose ps` | Igual | Incluye el estado de `migrate` (`Exited(0)` = OK) |
+| Ver logs | `docker compose logs -f app` | Igual | `docker compose logs --tail=100 migrate` (migraciones), `worker` (exports) o `redis` (cola) |
+| Ver estado | `docker compose ps` | Igual | Incluye `migrate` (`Exited(0)` = OK), `redis` (*healthy*) y `worker` (*up*) |
 
 `start.sh` / `start.ps1` localizan la raíz del proyecto desde su ubicación, leen `APP_HOST_PORT` de `.env` (default `3000`), avisan si el puerto está ocupado por un contenedor ajeno **sin detenerlo**, ejecutan `docker compose up -d --build`, esperan a que `migrate` termine con código 0 y a que `GET /health/ready` responda 200 (60 s cada espera), y aplican el seed idempotente. La opción `--no-seed` / `-NoSeed` omite el seed. Al terminar imprimen las URLs reales con el puerto configurado. La versión de Windows usa `Invoke-WebRequest` en lugar de `curl`.
 
-`stop.sh` / `stop.ps1` ejecutan `docker compose down` **sin `-v`**: los volúmenes `postgres_data`, `mailpit_data` y `files_data` se conservan, así como `minio_data` (reservado). No aceptan opciones que borren datos (p. ej. `-v`, `--volumes`, `-Volumes` o `-V`). `restart.sh` / `restart.ps1` encadenan el apagado y el arranque, reenviando argumentos como `--no-seed` / `-NoSeed`.
+`stop.sh` / `stop.ps1` ejecutan `docker compose down` **sin `-v`**: los volúmenes `postgres_data`, `redis_data`, `mailpit_data` y `files_data` se conservan, así como `minio_data` (reservado). No aceptan opciones que borren datos (p. ej. `-v`, `--volumes`, `-Volumes` o `-V`). `restart.sh` / `restart.ps1` encadenan el apagado y el arranque, reenviando argumentos como `--no-seed` / `-NoSeed`.
 
 El puerto publicado se controla únicamente con `APP_HOST_PORT` en `.env` (en este entorno, `3100` porque el `3000` lo ocupa otro proyecto).
 
@@ -571,7 +571,7 @@ docker compose exec app npm run prisma:seed         # upserts idempotentes
 docker compose exec app npm run prisma:generate     # tras editar schema.prisma
 ```
 
-La migración `20241125000000_stage2` recrea el enum `MembershipRole` (`LECTOR`, `EDITOR`, `ADMINISTRADOR`), añade `isActive`/`version` a `Category` y crea `Task`, `Subtask`, `FileObject` y `SpaceScenarioConfig`. La migración `20241126000000_stage3` añade los enums `OrderStatus`/`PaymentOutcome`, la columna `duplicateOrder` del simulador y las tablas `Cart`, `CartItem`, `Order`, `OrderItem`, `PaymentSimulation` e `IdempotencyRecord`. No se reescriben las migraciones anteriores.
+La migración `20241125000000_stage2` recrea el enum `MembershipRole` (`LECTOR`, `EDITOR`, `ADMINISTRADOR`), añade `isActive`/`version` a `Category` y crea `Task`, `Subtask`, `FileObject` y `SpaceScenarioConfig`. La migración `20241126000000_stage3` añade los enums `OrderStatus`/`PaymentOutcome`, la columna `duplicateOrder` del simulador y las tablas `Cart`, `CartItem`, `Order`, `OrderItem`, `PaymentSimulation` e `IdempotencyRecord`. La migración `20241127000000_stage4` añade los enums `NotificationType`, `ExportKind` y `ExportStatus`, la columna `failedAsyncJob` de `SpaceScenarioConfig` y las tablas `Notification`, `ChatRoom`, `ChatMember`, `ChatMessage`, `RealtimeEvent` y `ExportJob`. No se reescriben las migraciones anteriores.
 
 ## Solución de problemas
 
@@ -581,7 +581,8 @@ La migración `20241125000000_stage2` recrea el enum `MembershipRole` (`LECTOR`,
 | Servicio `migrate` en `Exited(1)` | Migración fallida o `DATABASE_URL`/contraseña incoherente; a veces PostgreSQL aún no estaba *healthy* | `docker compose logs --tail=100 migrate`; comprueba que `POSTGRES_PASSWORD` coincide con la contraseña de `DATABASE_URL`. Corrige `.env` y vuelve a `./start.sh` (las migraciones son idempotentes). No borres volúmenes. |
 | Errores de módulos / `Cannot find module` tras cambiar dependencias | `node_modules` del contenedor quedó viejo (el volumen anónimo **no** se actualiza solo al reconstruir la imagen) | `docker compose build app worker`, luego `docker compose exec app npm ci && docker compose exec app npx prisma generate` (y lo mismo en `worker`) y `docker compose restart app worker`. No mezcles `node_modules` del host con el del contenedor. |
 | `npm` se queja de la versión de Node en el host (EBADENGINE) o `nest: not found` | Node del host fuera de rango (p. ej. Node 25) | Usa Docker, o `nvm use` (lee `.nvmrc` → `20.18.1`). El rango soportado es `>=20.18.1 <21`. |
-| `/health/ready` no devuelve 200 | Primera vez que arranca o la app cayó | Espera unos segundos; revisa `docker compose logs --tail=100 app` y `docker compose ps`. El healthcheck comprueba PostgreSQL. |
+| `/health/ready` no devuelve 200 | Primera vez que arranca o la app cayó | Espera unos segundos; revisa `docker compose logs --tail=100 app` y `docker compose ps`. El healthcheck comprueba PostgreSQL, **no** Redis. Para verificar Redis: `docker compose exec redis redis-cli ping` (debe devolver `PONG`) o `docker compose ps redis`. |
+| `redis` no está *healthy* o el arranque espera a Redis | Imagen caída o `REDIS_URL` mal escrita (debe ser `redis://redis:6379` dentro de Compose) | Revisa `docker compose logs --tail=100 redis` y `docker compose config`. Si solo quieres probar la API sin cola, pon `JOBS_QUEUE_MODE=inline` en `.env`: `depends_on` de Redis es `required: false` y la app arranca igual. |
 | Mensaje `$'\r': command not found` al ejecutar `./start.sh` en Windows | Finales de línea CRLF | El repo incluye `.gitattributes` con `eol=lf` para `*.sh` (y `eol=crlf` para `*.ps1`/`*.cmd`); vuelve a clonar o normaliza con `git add --renormalize .`. Mejor: usa `.\start.ps1`, que no depende de bash. |
 | `curl` no existe en Windows | No viene instalado por defecto | Usa el equivalente con `Invoke-WebRequest` / `Invoke-RestMethod` mostrado arriba, o instala curl. |
 | No aparece MinIO / errores al activar `FILES_STORAGE=s3` | El servicio está **comentado** a propósito (imagen no verificable desde el entorno original) | No es un fallo: con `FILES_STORAGE=local` los archivos van al volumen `files_data` y las pruebas usan un stub. Solo descomenta MinIO si verificas el tag y configuras `MINIO_ROOT_*` y `S3_*`. |
@@ -592,7 +593,7 @@ La migración `20241125000000_stage2` recrea el enum `MembershipRole` (`LECTOR`,
 
 ## Backup y restore
 
-> **Los volúmenes no son backups.** `postgres_data`, `files_data` y `minio_data` residen en el mismo host: desaparecen si se borran, se corrompen o falla el disco. Guarda los archivos generados **fuera del host** y **prueba la restauración** en una BD separada antes de necesitarla de verdad. Para una copia estrictamente consistente (BD + archivos), detén la API primero con `docker compose stop app` y vuelve a levantarla con `docker compose up -d app`. Los backups generados (`backup.sql`, `*.tgz`, `backups/`) están ignorados por Git: **no los subas al repositorio** y guárdalos en almacenamiento externo/cifrado.
+> **Los volúmenes no son backups.** `postgres_data`, `files_data`, `redis_data` y `minio_data` residen en el mismo host: desaparecen si se borran, se corrompen o falla el disco. `redis_data` guarda solo el transporte de la cola: el estado de los trabajos está en PostgreSQL y el worker reencola los huérfanos al arrancar, pero una pérdida de Redis puede retrasar los trabajos pendientes. Guarda los archivos generados **fuera del host** y **prueba la restauración** en una BD separada antes de necesitarla de verdad. Para una copia estrictamente consistente (BD + archivos), detén la API primero con `docker compose stop app` y vuelve a levantarla con `docker compose up -d app`. Los backups generados (`backup.sql`, `*.tgz`, `backups/`) están ignorados por Git: **no los subas al repositorio** y guárdalos en almacenamiento externo/cifrado.
 
 Lee solo los nombres de usuario/base desde `.env` (no se "sourcea" el archivo porque `SMTP_FROM` contiene espacios). No se escriben secretos nuevos:
 

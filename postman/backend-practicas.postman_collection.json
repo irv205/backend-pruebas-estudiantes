@@ -4416,8 +4416,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));",
-                  "const j = pm.response.json(); if (j.data && j.data.id) pm.collectionVariables.set('roomId', j.data.id);"
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Sala creada con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('roomId', j.data.id);"
                 ]
               }
             }
@@ -4583,8 +4586,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "const j = pm.response.json(); if (j.data && j.data[0]) pm.collectionVariables.set('notificationId', j.data[0].id);"
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 200 y paginación', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.have.property('meta'); });",
+                  "const j = pm.response.json();",
+                  "if (j.data && j.data[0]) setVar('notificationId', j.data[0].id);"
                 ]
               }
             }
@@ -4620,7 +4625,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                  "pm.test('Status 200 y count numérico', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().data.count).to.be.a('number'); });"
                 ]
               }
             }
@@ -4792,8 +4797,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));",
-                  "const j = pm.response.json(); if (j.data && j.data.id) pm.collectionVariables.set('jobId', j.data.id);"
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201 con id y status', () => { pm.response.to.have.status(201); const d = pm.response.json().data; pm.expect(d).to.have.property('id'); pm.expect(d).to.have.property('status'); });",
+                  "setVar('jobId', pm.response.json().data.id);"
                 ]
               }
             }
@@ -4842,8 +4848,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));",
-                  "const j = pm.response.json(); if (j.data && j.data.id) pm.collectionVariables.set('jobId', j.data.id);"
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201 con id y status', () => { pm.response.to.have.status(201); const d = pm.response.json().data; pm.expect(d).to.have.property('id'); pm.expect(d).to.have.property('status'); });",
+                  "setVar('jobId', pm.response.json().data.id);"
                 ]
               }
             }
@@ -4892,7 +4899,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                  "pm.test('Status 200 y paginación', () => { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j).to.have.property('data'); pm.expect(j).to.have.property('meta'); });"
                 ]
               }
             }
@@ -4929,7 +4936,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                  "pm.test('Status 200 y estado válido', () => { pm.response.to.have.status(200); pm.expect(['PENDING','PROCESSING','COMPLETED','FAILED']).to.include(pm.response.json().data.status); });"
                 ]
               }
             }
@@ -5019,12 +5026,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "const j = pm.response.json(); pm.collectionVariables.set('accessToken', j.data.tokens.accessToken);",
-                  "const cookies = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value);",
-                  "const pick = n => { const c = cookies.find(v => v.startsWith(n + '=')); return c ? c.split(';')[0].slice(n.length + 1) : null; };",
-                  "pm.collectionVariables.set('webRefreshToken', pick('refresh_token'));",
-                  "pm.collectionVariables.set('csrfToken', pick('csrf_token') || j.data.csrfToken);"
+                  "const j = pm.response.json();",
+                  "pm.test('Sin refresh token en el body', () => pm.expect(j.data.tokens).not.to.have.property('refreshToken'));",
+                  "setVar('accessToken', j.data.tokens.accessToken);",
+                  "const cookies = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value).join('\\n');",
+                  "const pick = n => { const m = cookies.match(new RegExp('(?:^|\\\\n)' + n + '=([^;]+)')); return m ? m[1] : null; };",
+                  "setVar('webRefreshToken', pick('refresh_token'));",
+                  "setVar('csrfToken', pick('csrf_token') || j.data.csrfToken);"
                 ]
               }
             }
@@ -5054,8 +5064,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.collectionVariables.set('csrfToken', pm.response.json().data.csrfToken);"
+                  "setVar('csrfToken', pm.response.json().data.csrfToken);"
                 ]
               }
             }
@@ -5066,11 +5077,6 @@
           "request": {
             "method": "POST",
             "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "description": "JWT de acceso obtenido en Auth › Login"
-              },
               {
                 "key": "Content-Type",
                 "value": "application/json"
@@ -5096,7 +5102,7 @@
               ],
               "query": []
             },
-            "description": "Rota el refresh token y actualiza la cookie; sin X-CSRF-Token responde 403."
+            "description": "Rota el refresh token y actualiza la cookie. Sin Authorization: Bearer (un Bearer omite el guard CSRF) y con X-CSRF-Token; sin esa cabecera responde 403 CSRF_TOKEN_INVALID."
           },
           "event": [
             {
@@ -5104,10 +5110,51 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.collectionVariables.set('accessToken', pm.response.json().data.tokens.accessToken);",
-                  "const cookies = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value);",
-                  "const c = cookies.find(v => v.startsWith('refresh_token=')); if (c) pm.collectionVariables.set('webRefreshToken', c.split(';')[0].slice('refresh_token='.length));"
+                  "setVar('accessToken', pm.response.json().data.tokens.accessToken);",
+                  "const cookies = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value).join('\\n');",
+                  "const c = cookies.split('\\n').map(v => v.trim()).find(v => v.startsWith('refresh_token=')); if (c) setVar('webRefreshToken', c.slice('refresh_token='.length).split(';')[0]);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renovar sesión web sin CSRF (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "refresh_token={{webRefreshToken}}; csrf_token={{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/web/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "web",
+                "refresh"
+              ],
+              "query": []
+            },
+            "description": "Sesión por cookie SIN X-CSRF-Token y sin Bearer: el guard devuelve 403 CSRF_TOKEN_INVALID. Con Authorization: Bearer el guard no se aplicaría (por eso esta request no lo envía)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403 CSRF_TOKEN_INVALID', () => { pm.response.to.have.status(403); pm.expect(pm.response.json().error.code).to.equal('CSRF_TOKEN_INVALID'); });"
                 ]
               }
             }
@@ -5118,11 +5165,6 @@
           "request": {
             "method": "POST",
             "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "description": "JWT de acceso obtenido en Auth › Login"
-              },
               {
                 "key": "Content-Type",
                 "value": "application/json"
@@ -5148,7 +5190,7 @@
               ],
               "query": []
             },
-            "description": "204 y cookies con Max-Age=0."
+            "description": "204 y cookies con Max-Age=0. Sin Authorization: Bearer: la petición se autoriza por cookie y exige X-CSRF-Token."
           },
           "event": [
             {

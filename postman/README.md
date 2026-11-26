@@ -49,9 +49,26 @@ La carpeta **Cart & Orders** sigue este orden (usa el `productId` autopoblado po
 - **Realtime:** el socket no se prueba con requests REST. Conecta desde tu cliente a `ws://localhost:3100/socket.io` con `auth: { token: "{{accessToken}}" }`. La carpeta contiene la creación de sala (`roomId` se autopuebla), el listado y el historial. Eventos: `connection:ready`, `chat:send` → `chat:message`, `resource:changed`, `notification:new`, `job:updated`, `events:replay` (envía `{ lastEventId: 0, spaceId, limit: 50 }`) y `ws:error`. El replay es la forma de recuperar eventos tras reconectar.
 - **Notifications:** ejecuta *Listar notificaciones* (autopuebla `notificationId`) después de pagar/cancelar un pedido o de completar/fallar un export; comprueba *Contar no leídas*, *Detalle*, *Marcar como leída* y *Marcar todas como leídas*.
 - **Jobs:** *Crear export de productos/notas* autopuebla `jobId`. Con `JOBS_QUEUE_MODE=redis` el primer estado suele ser `PENDING`: usa *Consultar estado del trabajo* hasta `COMPLETED`/`FAILED` (o `inline` en tests, donde responde `COMPLETED`). Luego *Descargar CSV terminado* (antes devuelve `409 EXPORT_NOT_READY`). Para provocar un fallo: **Simulator › Activar failedAsyncJob**, crear otro export, verificar `FAILED`, y ejecutar **Simulator › Desactivar todos los escenarios (limpieza)**.
-- **Web Auth (cookies/CSRF):** *Login web* guarda `webRefreshToken` y `csrfToken` desde las cookies `Set-Cookie` y actualiza `accessToken`. *Obtener CSRF* rota el token double-submit. *Renovar sesión web* y *Logout web* envían `Cookie: refresh_token={{webRefreshToken}}; csrf_token={{csrfToken}}` y `X-CSRF-Token: {{csrfToken}}`; sin esa cabecera responderían `403 CSRF_TOKEN_INVALID`. Las rutas Bearer siguen funcionando igual.
+- **Web Auth (cookies/CSRF):** *Login web* guarda `webRefreshToken` y `csrfToken` desde las cookies `Set-Cookie` y actualiza `accessToken` (el body **no** devuelve el refresh token). *Obtener CSRF* rota el token double-submit. *Renovar sesión web* y *Logout web* envían `Cookie: refresh_token={{webRefreshToken}}; csrf_token={{csrfToken}}` y `X-CSRF-Token: {{csrfToken}}`. **Estos dos requests NO envían `Authorization: Bearer` a propósito**: el guard CSRF se salta cuando hay Bearer, así que con él no se estaría probando el flujo de cookies. El request *Renovar sesión web sin CSRF (403)* comprueba que, sin la cabecera `X-CSRF-Token`, la respuesta es `403 CSRF_TOKEN_INVALID`. Las rutas Bearer habituales siguen funcionando igual y no requieren CSRF.
 
-> Postman no sustituye al cliente WebSocket: usa la carpeta **Realtime** como referencia y un cliente Socket.IO para los eventos.
+> Los scripts de estas cuatro carpetas usan el mismo helper `setVar` que el resto de la colección: escriben en el environment cuando hay uno seleccionado y, si no, en las variables de la collection. Así `notificationId`, `jobId`, `roomId` y `csrfToken` se resuelven con el environment recomendado en lugar de quedar vacíos.
+
+> En Postman las cookies se guardan en la *Cookie jar*, pero los scripts leen el valor de `Set-Cookie` y lo escriben en `webRefreshToken`/`csrfToken` porque las peticiones usan una cabecera `Cookie` explícita. Tras *Obtener CSRF*, vuelve a ejecutar *Renovar sesión web* para usar el token rotado. Si tu jar tiene cookies de otra sesión, limpia la jar o usa el environment recién importado.
+
+> Postman no sustituye al cliente WebSocket: la carpeta **Realtime** documenta las salas y el historial REST, pero los eventos se observan con un cliente Socket.IO. Ejemplo mínimo (Node, `npm i socket.io-client`):
+>
+> ```js
+> import { io } from 'socket.io-client';
+> const socket = io('http://localhost:3100', { auth: { token: accessToken } });
+> socket.on('connection:ready', ({ user, spaces }) => console.log(user.id, spaces));
+> socket.on('chat:message', console.log);
+> socket.on('notification:new', console.log);
+> socket.emit('events:replay', { lastEventId: 0, limit: 50 });
+> socket.on('events:replay', ({ events, lastEventId }) => console.log(events, lastEventId));
+> socket.on('ws:error', console.error);
+> ```
+>
+> Para probar el chat, crea una sala con *Realtime › Crear sala de chat* (guarda `roomId`) y emite `socket.emit('chat:send', { roomId, content: 'hola' })`. Guarda el `id` del último evento para reconectar con `lastEventId`.
 
 ## Cambiar el puerto (baseUrl)
 
@@ -80,11 +97,11 @@ El `docker-compose` publica la app en `http://localhost:3100` porque `.env` (y l
 
 ## Simulador
 
-La carpeta **Simulator** usa las claves reales del código (`src/simulator/scenarios.ts`): `slowResponse`, `timeout`, `temporary503`, `sessionExpired`, `insufficientPermission`, `emptyList`, `largeVolume`, `concurrentEdit`, `rateLimit`, `invalidFile` y `duplicateOrder`. Hay requests para consultar/activar escenarios del espacio personal y de equipo (solo `ADMINISTRADOR`), activar todos, y una comprobación de `429 RATE_LIMITED` con cabecera `Retry-After`.
+La carpeta **Simulator** usa las 12 claves reales del código (`src/simulator/scenarios.ts`): `slowResponse`, `timeout`, `temporary503`, `sessionExpired`, `insufficientPermission`, `emptyList`, `largeVolume`, `concurrentEdit`, `rateLimit`, `invalidFile`, `duplicateOrder` y `failedAsyncJob`. Hay requests para consultar/activar escenarios del espacio personal y de equipo (solo `ADMINISTRADOR`), activar todos, y una comprobación de `429 RATE_LIMITED` con cabecera `Retry-After`.
 
 **Pedido repetido (`duplicateOrder`, Etapa 3):** ejecuta *Pedido repetido: activar duplicateOrder*, añade un item al carrito y usa *Pedido repetido: crear pedido dos veces (script)*. El interceptor sustituye la cabecera por `duplicate-order-<spaceId>`: el primer POST crea el pedido y el segundo (lanzado por el script) devuelve el mismo `id` y `status` sin descontar stock otra vez. Límites: solo afecta a `POST /orders` y a un espacio a la vez; una clave por espacio. **`failedAsyncJob` (Etapa 4)** está disponible: ver la carpeta **Jobs** y el request *Simulator › Activar failedAsyncJob*.
 
-**Ejecuta siempre «Desactivar todos los escenarios (limpieza)» al terminar**, porque la configuración persiste por espacio y afecta a las respuestas posteriores. El request de limpieza ya incluye `duplicateOrder: false`.
+**Ejecuta siempre «Desactivar todos los escenarios (limpieza)» al terminar**, porque la configuración persiste por espacio y afecta a las respuestas posteriores. El request de limpieza ya incluye `duplicateOrder: false` y `failedAsyncJob: false`.
 
 ## Respuestas y errores
 
