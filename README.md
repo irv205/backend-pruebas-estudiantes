@@ -33,6 +33,32 @@ Por ello el servicio **queda comentado** en `docker-compose.yml`, con el comando
 
 Sigue estos pasos **en orden** en Windows, macOS o Linux. Todos los comandos se ejecutan desde una terminal situada en la carpeta del proyecto. Si algo falla, salta a [Solución de problemas](#solución-de-problemas).
 
+### Instalación automática
+
+El instalador ejecuta estos pasos por ti (raíz del proyecto, requisitos, `.env`, puerto, `docker compose config` y arranque reutilizando `scripts/start.sh`), e imprime un resumen final con las URLs reales:
+
+```bash
+# macOS / Linux
+git clone <URL> && cd <REPO> && ./install.sh
+```
+
+```powershell
+# Windows PowerShell
+git clone <URL>; cd <REPO>; .\install.ps1
+```
+
+Sustituye `<URL>` y `<REPO>` por tu repositorio real (son marcadores de posición). Si ya tienes el código, ejecuta `./install.sh` (o `.\install.ps1`, o `npm run project:install`) desde la raíz. Opciones principales:
+
+| Opción (bash / PowerShell) | Efecto |
+|---|---|
+| `--no-seed` / `-NoSeed` | Omite el seed (se reenvía a `start.sh`). |
+| `--yes`, `--non-interactive` / `-Yes`, `-NonInteractive` | Acepta defaults; **no** sobrescribe un `.env` existente. |
+| `--repo-url URL` / `-RepoUrl URL` | Repositorio a clonar si no se está en la raíz (también `REPO_URL`). |
+| `--target DIR` / `-Target DIR` | Directorio destino del clon. |
+| `--install-deps` / `-InstallDeps` | Permite intentar instalar dependencias del sistema **solo tras confirmación explícita**. |
+
+> El instalador **no sube nada a GitHub** (no configura remote ni hace push) y **no instala dependencias del sistema sin confirmación**; `--yes` tampoco autoriza esa instalación. En Windows el arranque reutiliza `scripts/start.sh` a través de Git Bash/WSL. La guía manual detallada sigue a continuación.
+
 ### 1. Requisitos previos
 
 | Requisito | Windows / macOS | Linux | Cómo comprobarlo |

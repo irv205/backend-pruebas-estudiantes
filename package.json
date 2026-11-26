@@ -19,6 +19,7 @@
     "prisma:seed": "ts-node --transpile-only prisma/seed.ts",
     "test": "jest",
     "test:e2e": "jest --config test/jest-e2e.json --runInBand --forceExit",
+    "project:install": "bash scripts/install.sh",
     "project:start": "bash scripts/start.sh",
     "project:stop": "bash scripts/stop.sh",
     "project:restart": "bash scripts/restart.sh"
