@@ -1,4 +1,4 @@
-/** Escenarios reales (Etapas 1-3). `failedAsyncJob` queda para Etapa 4. */
+/** Escenarios reales (Etapas 1-4). */
 export const SCENARIO_KEYS = [
   'slowResponse',
   'timeout',
@@ -11,6 +11,7 @@ export const SCENARIO_KEYS = [
   'rateLimit',
   'invalidFile',
   'duplicateOrder',
+  'failedAsyncJob',
 ] as const;
 
 export type ScenarioKey = (typeof SCENARIO_KEYS)[number];
@@ -30,6 +31,9 @@ export const SCENARIO_DESCRIPTIONS: Record<ScenarioKey, string> = {
     'Pedido repetido: fuerza la clave `duplicate-order-<spaceId>` en POST /orders; ' +
     'el primer pedido se crea y los reintentos devuelven el mismo pedido sin descontar stock dos veces. ' +
     'Límites: solo POST /orders, una clave por espacio y body máximo del carrito.',
+  failedAsyncJob:
+    'Todos los export jobs creados en el espacio terminan en FAILED con un mensaje reproducible. ' +
+    'Se aplica en el worker/procesador (no en la respuesta HTTP); desactívalo para volver a exportar.',
 };
 
 /**

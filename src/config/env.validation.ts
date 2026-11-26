@@ -66,4 +66,11 @@ export const envValidationSchema = Joi.object({
   SCENARIO_MAX_DELAY_MS: Joi.number().integer().min(100).max(10000).default(3000),
   SCENARIO_MAX_CONCURRENCY: Joi.number().integer().min(1).max(20).default(5),
   SCENARIO_LARGE_VOLUME_COUNT: Joi.number().integer().min(10).max(1000).default(500),
+
+  // ── Etapa 4: cola de trabajos, replay y sesión web ─────────────────────────
+  // Redis solo transporta mensajes; el estado vive en PostgreSQL.
+  REDIS_URL: Joi.string().uri({ scheme: ['redis', 'rediss'] }).default('redis://redis:6379'),
+  JOBS_QUEUE_MODE: Joi.string().valid('inline', 'redis').default('redis'),
+  JOBS_RETENTION_HOURS: Joi.number().integer().min(1).max(720).default(24),
+  WORKER_MODE: Joi.boolean().default(false),
 });

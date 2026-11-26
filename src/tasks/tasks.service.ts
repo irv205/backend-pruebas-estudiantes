@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Prisma, Task, TaskStatus } from '@prisma/client';
 import { getPageParams, paginate } from '../common/pagination/pagination';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeEventsService } from '../realtime/realtime-events.service';
 import { CreateTaskDto, CreateSubtaskDto } from './dto/create-task.dto';
 import { QueryTasksDto } from './dto/query-tasks.dto';
 import { UpdateSubtaskDto } from './dto/subtask.dto';
@@ -20,7 +21,10 @@ const includeSubtasks = { subtasks: { orderBy: { createdAt: 'asc' as const } } }
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeEventsService,
+  ) {}
 
   async list(spaceId: string, ownerId: string | null, query: QueryTasksDto) {
     const { page, limit, skip, take } = getPageParams(query);
@@ -66,7 +70,7 @@ export class TasksService {
 
   /** El controlador valida el espacio/rol antes de llamar a este método. */
   async create(spaceId: string, ownerId: string | null, dto: CreateTaskDto): Promise<Task> {
-    return this.prisma.task.create({
+    const task = await this.prisma.task.create({
       data: {
         spaceId,
         ownerId,
@@ -81,6 +85,12 @@ export class TasksService {
       },
       include: includeSubtasks,
     });
+    await this.realtime.recordSafely(spaceId, 'TASK', {
+      action: 'created',
+      resourceType: 'TASK',
+      resourceId: task.id,
+    });
+    return task;
   }
 
   /** Actualización optimista con transiciones de estado validadas. */
@@ -112,7 +122,15 @@ export class TasksService {
         fields: { version: ['La versión enviada no coincide con la actual.'] },
       });
     }
-    return this.findOne(spaceId, id);
+    const updated = await this.findOne(spaceId, id);
+    await this.realtime.recordSafely(spaceId, 'TASK', {
+      action: 'updated',
+      resourceType: 'TASK',
+      resourceId: updated.id,
+      status: updated.status,
+      version: updated.version,
+    });
+    return updated;
   }
 
   async remove(spaceId: string, id: string): Promise<void> {
@@ -123,6 +141,11 @@ export class TasksService {
         message: 'La tarea no existe en este espacio.',
       });
     }
+    await this.realtime.recordSafely(spaceId, 'TASK', {
+      action: 'deleted',
+      resourceType: 'TASK',
+      resourceId: id,
+    });
   }
 
   async addSubtask(spaceId: string, taskId: string, dto: CreateSubtaskDto): Promise<Task> {

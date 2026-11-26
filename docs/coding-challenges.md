@@ -2,7 +2,7 @@
 
 Esta guía es tu hoja de ruta para practicar integración de clientes (web, Android, iOS o escritorio) contra el backend de prácticas. Cada desafío se puede resolver **con la colección de Postman o con `curl`**: no necesitas permisos especiales ni tocar el código del servidor.
 
-> **Estado real del backend:** Etapas **1, 2 y 3 implementadas**. Etapa **4 pendiente**. El Nivel 5 (carrito, pedidos, stock, pagos e idempotencia) **ya está disponible**; el Nivel 6 sigue siendo especificación para la Etapa 4: **no intentes ejecutarlo todavía**.
+> **Estado real del backend:** Etapas **1, 2, 3 y 4 implementadas**. Los niveles 5 (carrito, pedidos, pagos e idempotencia) y 6 (WebSocket, notificaciones y exportaciones) **están disponibles**. Sigue pendiente el portal del estudiante (UI) y las guías cliente JS/Kotlin/Retrofit.
 
 ---
 
@@ -101,7 +101,7 @@ El propietario de un equipo siempre es `ADMINISTRADOR`; `LECTOR` solo consulta, 
 
 Disponibles (Etapas 1-2): health, auth, users, spaces/roles, categories, products y public/products, notes, tasks/subtasks, files (multipart) y simulator.
 
-Disponible desde la Etapa 3: carrito, pedidos, pagos simulados e idempotencia (Nivel 5). Pendientes (Etapa 4): WebSockets, worker/Redis, notificaciones y exportaciones; portal del estudiante y flujo web con cookies `HttpOnly` + CSRF (hoy se usa `Authorization: Bearer`).
+Disponibles desde la Etapa 3: carrito, pedidos, pagos simulados e idempotencia (Nivel 5). Disponibles desde la Etapa 4 (Nivel 6): notificaciones, WebSocket/chat con replay, export jobs con worker/Redis y login web con cookies `HttpOnly` + CSRF. Sigue pendiente el portal del estudiante (UI) y las guías cliente JS/Kotlin/Retrofit.
 
 ---
 
@@ -115,7 +115,7 @@ Disponible desde la Etapa 3: carrito, pedidos, pagos simulados e idempotencia (N
 | 3 | Intermedio | Registro, login, perfil y notas privadas | Disponible | 5 |
 | 4 | Intermedio avanzado | Categorías, tareas, archivos, roles y simulador | Disponible | 5 |
 | 5 | Avanzado | Carrito, pedidos, stock, pagos e idempotencia | **Disponible (Etapa 3)** | 2 |
-| 6 | Integraciones | WebSockets, notificaciones y exportaciones | **Requiere Etapa 4 (pendiente)** | 2 |
+| 6 | Integraciones | WebSockets, notificaciones y exportaciones | **Disponible (Etapa 4)** | 2 |
 
 Después del Nivel 6 encontrarás el **proyecto final sugerido**. **Total: 24 desafíos.**
 
@@ -1145,93 +1145,96 @@ Cualquier otra transición responde `409 INVALID_STATUS_TRANSITION` (p. ej., pag
 
 **Errores comunes:** enviar tarjetas reales; confundir `PENDING` con `APPROVED`; cancelar dos veces y esperar doble reposición; usar `DECLINED` (el valor correcto es `REJECTED`).
 
-**Extensión opcional:** implementa un webhook simulado en tu cliente con verificación de firma (Etapa 4).
+**Extensión opcional:** implementa un webhook simulado en tu cliente con verificación de firma.
 
 ---
 
 ### Nivel 6 — Integraciones: WebSockets, notificaciones y exportaciones
 
-> ## ⚠️ REQUIERE ETAPA 4 (PENDIENTE)
->
-> **Los endpoints de este nivel no existen hoy.** No hay WebSocket, worker/Redis, bandeja de notificaciones ni exportaciones. Esta sección describe el contrato previsto, no algo ejecutable.
+> **Disponible desde la Etapa 4.** Requiere `docker compose up -d --build` para que arranquen `redis` y `worker`. En CI/e2e se usa `JOBS_QUEUE_MODE=inline` y no se necesita Redis.
 
-#### C6.1 — WebSockets y notificaciones (requiere Etapa 4, pendiente)
+#### C6.1 — WebSockets, chat y notificaciones
 
-**Objetivo de aprendizaje:** recibir eventos en tiempo real con autenticación, autorización por sala y reconexión.
+**Objetivo de aprendizaje:** recibir eventos en tiempo real con autenticación, autorización por sala y reconexión con replay.
 
-**Endpoints previstos (pendientes)**
+**Endpoints reales**
 
-| Tipo | Ruta prevista | Función |
+| Tipo | Ruta | Función |
 |---|---|---|
-| WS | `/api/v1/ws?token=<accessToken>` | Conexión autenticada; suscripción a salas del espacio |
-| `GET` | `/notifications?page=1&limit=20` | Bandeja paginada |
-| `GET` | `/notifications/unread-count` | Contador de pendientes |
-| `PATCH` | `/notifications/:id/read` | Marcar una como leída |
-| `POST` | `/notifications/read-all` | Marcar todas como leídas |
+| WS | `ws://localhost:3100/socket.io` (path por defecto) | Conexión con `auth: { token: accessToken }` o header `Authorization: Bearer`. |
+| `GET` | `/notifications?page=1&limit=20&unreadOnly=true` | Bandeja paginada del usuario en el espacio. |
+| `GET` | `/notifications/unread-count` | `{ data: { count } }`. |
+| `GET` | `/notifications/:id` | Detalle (404 si no es tuyo). |
+| `PATCH` | `/notifications/:id/read` | Marca una como leída (`isRead`, `readAt`). |
+| `PATCH` | `/notifications/read-all` | Marca todas como leídas. |
+| `POST`/`GET` | `/chat/rooms`, `/chat/rooms/:id/messages` | Crear sala y consultar historial paginado. |
 
-**Especificación para cuando esté disponible**
+**Eventos WS:** `connection:ready`, `chat:send` (ACK), `chat:message`, `resource:changed`, `notification:new`, `job:updated`, `events:replay`, `ws:error`.
 
-1. Conecta el socket con el token y comprueba que un usuario de otro espacio no recibe tus eventos.
-2. Crea una nota o cambia el estado de una tarea y verifica que llega el evento de actualización.
-3. Desconecta y reconecta: la estrategia documentada debe permitir recuperar eventos perdidos.
-4. Consulta la bandeja, marca una notificación como leída y actualiza el contador.
+**Especificación**
 
-**Criterios de aceptación (cuando la Etapa 4 esté lista)**
+1. Conecta dos usuarios (propietario y miembro de un equipo), crea una sala con `POST /chat/rooms` y envía `chat:send`; ambos deben recibir `chat:message` con `sequence` consecutivo.
+2. Intenta usar una sala del espacio personal de otro usuario: debes recibir `ws:error` con `SPACE_ACCESS_DENIED`.
+3. Crea un producto con `x-space-id` del equipo y comprueba `resource:changed` con `{ type: "PRODUCT", action: "created", resourceType: "PRODUCT", resourceId }`.
+4. Paga un pedido con `outcome: APPROVED` y verifica `notification:new` (`ORDER_APPROVED`) y que el contador de no leídas sube.
+5. Guarda el último `id` de evento recibido, desconecta, reconecta y envía `events:replay` con `{ lastEventId, spaceId, limit: 100 }`; debes recuperar solo los eventos posteriores.
 
-- [ ] La conexión exige autenticación y la suscripción a salas exige pertenencia.
-- [ ] Los eventos llegan con `resource`, `action` y `resourceId`.
-- [ ] Tras reconectar, el cliente recupera los eventos perdidos.
-- [ ] El contador de no leídas coincide con la bandeja.
+**Criterios de aceptación**
 
-**Pista:** hoy puedes simular la *idea* con `GET /notifications` implementado en tu propio frontend, pero **no** con endpoints del backend.
+- [ ] Sin JWT válido hay `ws:error AUTH_TOKEN_INVALID` y desconexión.
+- [ ] Las salas se autorizan por espacio/membresía; el espacio personal solo lo usa su propietario.
+- [ ] Los eventos incluyen `id`, `spaceId`, `type`, `action`, `resourceType`, `resourceId`, `createdAt`.
+- [ ] Tras reconectar, `events:replay` devuelve los eventos perdidos en orden y `lastEventId` avanza.
+- [ ] Leer una notificación baja el contador de no leídas exactamente en uno.
 
-**Errores comunes:** asumir que el backend actual ya tiene `/ws`; enviar el token por query sin HTTPS en producción; no manejar reconexiones.
+**Errores comunes:** enviar el refresh token en `auth.token`; esperar eventos en `/api/v1/ws` (el path es `/socket.io`); no registrar el listener antes de emitir; olvidar `x-space-id` en equipos.
 
-**Extensión opcional:** diseña el estado del cliente con un reducer que aplique eventos idempotentemente.
+**Extensión opcional:** reducer del cliente que aplique eventos idempotentemente usando `id`/`sequence`.
 
 ---
 
-#### C6.2 — Exportaciones asíncronas (requiere Etapa 4, pendiente)
+#### C6.2 — Exportaciones asíncronas
 
-**Objetivo de aprendizaje:** lanzar trabajos largos, consultar progreso con polling y descargar un resultado temporal.
+**Objetivo de aprendizaje:** lanzar trabajos, consultar progreso con polling y descargar un CSV autorizado.
 
-**Endpoints previstos (pendientes)**
+**Endpoints reales**
 
-| Método | Ruta prevista | Función |
+| Método | Ruta | Función |
 |---|---|---|
-| `POST` | `/exports` | `{ resource: "products", format: "csv" }` → `202` con `id` |
-| `GET` | `/exports/:id` | `status`: `pending`, `processing`, `completed`, `failed` |
-| `GET` | `/exports/:id/download` | Descarga temporal autorizada al terminar |
+| `POST` | `/jobs/exports` | `{ "kind": "PRODUCTS_CSV" \| "NOTES_CSV", "filters": { "search": "...", "categoryId": "<uuid>", "isArchived": true } }` → `201` con `data.id`. |
+| `GET` | `/jobs/exports?status=COMPLETED&page=1&limit=20` | Listado paginado del espacio. |
+| `GET` | `/jobs/exports/:id` | `status`: `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`; `progress`, `error`, `finishedAt`. |
+| `GET` | `/jobs/exports/:id/download` | CSV (`attachment`) solo si `COMPLETED`; si no → `409 EXPORT_NOT_READY`. |
 
-**Especificación para cuando esté disponible**
+Con `JOBS_QUEUE_MODE=redis` la creación responde `PENDING` y el worker la lleva a terminal; con `inline` responde directamente `COMPLETED`. PostgreSQL guarda el estado en ambos modos, y el worker recupera trabajos huérfanos al arrancar.
 
-1. Solicita una exportación y guarda el `id`.
-2. Haz polling de `GET /exports/:id` con intervalo creciente hasta `completed` o `failed`.
-3. Si el estado es `failed`, muestra el error y permite reintentar.
-4. Descarga el archivo con la URL/endpoint temporal; comprueba que no sea pública.
+**Especificación**
 
-**Criterios de aceptación (cuando la Etapa 4 esté lista)**
+1. Crea notas/productos, solicita `POST /jobs/exports` y guarda `data.id`.
+2. Haz polling de `GET /jobs/exports/:id` con intervalo creciente y tope de intentos hasta `COMPLETED` o `FAILED`.
+3. Activa `PATCH /spaces/me/scenarios` con `{ "failedAsyncJob": true }`, lanza otro export y comprueba `FAILED` con `error` que menciona `failedAsyncJob` y una notificación `JOB_FAILED`. Desactívalo después.
+4. Descarga el CSV terminado con la cabecera Bearer; comprueba que otro usuario recibe `404` y que el archivo no es público.
 
-- [ ] La creación responde `202` y el estado evoluciona hasta terminal.
-- [ ] El polling respeta un intervalo y un máximo de intentos.
-- [ ] La descarga exige autorización y caduca.
-- [ ] El escenario «trabajo asíncrono fallido» permite probar `failed`.
+**Criterios de aceptación**
 
-**Pista:** hoy el escenario de trabajo fallido aparece en el simulador como **no implementado**; no intentes activarlo.
+- [ ] El estado evoluciona hasta terminal y `progress` llega a 100 en `COMPLETED`.
+- [ ] `job:updated` se emite al propietario en cada cambio relevante.
+- [ ] La descarga exige autorización y solo funciona si `COMPLETED`.
+- [ ] `failedAsyncJob` produce fallos reproducibles sin afectar a otros espacios.
 
-**Errores comunes:** hacer polling sin límite; compartir la URL de descarga; tratar `processing` como error; creer que el worker ya existe.
+**Errores comunes:** hacer polling sin límite; compartir la URL de descarga; tratar `PROCESSING` como error; activar el escenario en el espacio equivocado.
 
 **Extensión opcional:** patrón de polling en JavaScript:
 
 ```js
 async function waitForExport(id, token, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i++) {
-    const res = await fetch(`http://localhost:3100/api/v1/exports/${id}`, {
+    const res = await fetch(`http://localhost:3100/api/v1/jobs/exports/${id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const { data } = await res.json();
-    if (data.status === 'completed') return data;
-    if (data.status === 'failed') throw new Error(data.error?.message ?? 'Exportación fallida');
+    if (data.status === 'COMPLETED') return data;
+    if (data.status === 'FAILED') throw new Error(data.error ?? 'Exportación fallida');
     await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * 2 ** i, 10000)));
   }
   throw new Error('Tiempo de espera agotado');
@@ -1274,7 +1277,7 @@ La configuración se guarda **por espacio** y persiste. Actívala con `PATCH /sp
 | Límite alcanzado | `rateLimit` | `{"rateLimit":true}` | `429 RATE_LIMITED` con `Retry-After: 5`: esperar antes de reintentar |
 | Archivo inválido | `invalidFile` | `{"invalidFile":true}` | `400 INVALID_FILE_TYPE` al subir multipart: validar antes de enviar |
 | Pedido repetido | `duplicateOrder` | `{"duplicateOrder":true}` | `201` con el mismo pedido al repetir `POST /orders`: misma idempotencia, sin doble descuento de stock; ver Nivel 5 |
-| Trabajo asíncrono fallido | — | **No implementado (pendiente de Etapa 4)** | Requiere worker/Redis y consulta de estado; ver Nivel 6 |
+| Trabajo asíncrono fallido | `failedAsyncJob` | `{"failedAsyncJob":true}` | Los export jobs del espacio terminan en `FAILED` con error reproducible; ver Nivel 6 |
 
 Comprobación rápida de limpieza en Postman: `Simulator › Desactivar todos los escenarios (limpieza)`, o:
 
@@ -1319,7 +1322,7 @@ Marca antes de entregar:
 - [ ] **Puerto 3100:** API en `http://localhost:3100/api/v1`, health en `http://localhost:3100/health/...`, Swagger en `http://localhost:3100/docs`.
 - [ ] **Demo pública es solo lectura:** sin `x-space-id`, escribir responde `403 DEMO_READ_ONLY`.
 - [ ] **Escenarios limpios:** desactivaste todos los del simulador al terminar.
-- [ ] **Etapa 4:** no inventes endpoints de WS, notificaciones ni exportaciones como si existieran; carrito/pedidos/pagos sí están en la Etapa 3.
+- [ ] **Etapa 4:** conecta el socket por `/socket.io` con el access token, guarda `lastEventId` para el replay y desactiva `failedAsyncJob` al terminar.
 
 ---
 
@@ -1343,4 +1346,4 @@ Entrega un paquete con:
 
 ---
 
-*Guía alineada con `propuesta_backend_estudiantes.md` (secciones 3, 4, 6-8, 10, 11 y 14) y con el estado real del código: Etapas 1, 2 y 3 implementadas; Etapa 4 pendiente.*
+*Guía alineada con `propuesta_backend_estudiantes.md` (secciones 3, 4, 6-8, 10, 11 y 14) y con el estado real del código: Etapas 1 a 4 implementadas; Nivel 6 disponible.*

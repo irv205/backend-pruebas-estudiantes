@@ -1,4 +1,4 @@
-# Postman — Backend de prácticas (Etapas 1-3)
+# Postman — Backend de prácticas (Etapas 1-4)
 
 Collection y environment derivados del código real del proyecto (`src/**/*.controller.ts`, DTOs y `src/app.configure.ts`). No se modificó lógica de negocio, migraciones, seed ni la propuesta.
 
@@ -11,7 +11,7 @@ Archivos:
 
 1. En Postman: **Import → Upload Files** y selecciona ambos archivos JSON (también puedes arrastrar la carpeta `postman/`).
 2. En el selector de environment (arriba a la derecha) elige **Backend Prácticas - Local (desarrollo)**.
-3. Comprueba las variables `baseUrl` = `http://localhost:3100/api/v1` y `hostUrl` = `http://localhost:3100`. Además de los IDs de las etapas anteriores, están `orderId`, `paymentId` e `idempotencyKey` (Etapa 3).
+3. Comprueba las variables `baseUrl` = `http://localhost:3100/api/v1` y `hostUrl` = `http://localhost:3100`. Además de los IDs de las etapas anteriores, están `orderId`, `paymentId`, `idempotencyKey` (Etapa 3) y `notificationId`, `jobId`, `roomId`, `csrfToken`, `webRefreshToken` (Etapa 4).
 4. La documentación interactiva de la API está en `http://localhost:3100/docs` (Swagger).
 
 ## Flujo recomendado de ejecución
@@ -44,6 +44,15 @@ La carpeta **Cart & Orders** sigue este orden (usa el `productId` autopoblado po
 
 > Para demostrar la idempotencia desde cero, ejecuta **Vaciar carrito → Añadir item → Crear pedido → Reintentar mismo pedido** y compara el stock del producto antes y después con *Products › Detalle de producto*.
 
+## Etapa 4: Realtime, Notifications, Jobs y Web Auth
+
+- **Realtime:** el socket no se prueba con requests REST. Conecta desde tu cliente a `ws://localhost:3100/socket.io` con `auth: { token: "{{accessToken}}" }`. La carpeta contiene la creación de sala (`roomId` se autopuebla), el listado y el historial. Eventos: `connection:ready`, `chat:send` → `chat:message`, `resource:changed`, `notification:new`, `job:updated`, `events:replay` (envía `{ lastEventId: 0, spaceId, limit: 50 }`) y `ws:error`. El replay es la forma de recuperar eventos tras reconectar.
+- **Notifications:** ejecuta *Listar notificaciones* (autopuebla `notificationId`) después de pagar/cancelar un pedido o de completar/fallar un export; comprueba *Contar no leídas*, *Detalle*, *Marcar como leída* y *Marcar todas como leídas*.
+- **Jobs:** *Crear export de productos/notas* autopuebla `jobId`. Con `JOBS_QUEUE_MODE=redis` el primer estado suele ser `PENDING`: usa *Consultar estado del trabajo* hasta `COMPLETED`/`FAILED` (o `inline` en tests, donde responde `COMPLETED`). Luego *Descargar CSV terminado* (antes devuelve `409 EXPORT_NOT_READY`). Para provocar un fallo: **Simulator › Activar failedAsyncJob**, crear otro export, verificar `FAILED`, y ejecutar **Simulator › Desactivar todos los escenarios (limpieza)**.
+- **Web Auth (cookies/CSRF):** *Login web* guarda `webRefreshToken` y `csrfToken` desde las cookies `Set-Cookie` y actualiza `accessToken`. *Obtener CSRF* rota el token double-submit. *Renovar sesión web* y *Logout web* envían `Cookie: refresh_token={{webRefreshToken}}; csrf_token={{csrfToken}}` y `X-CSRF-Token: {{csrfToken}}`; sin esa cabecera responderían `403 CSRF_TOKEN_INVALID`. Las rutas Bearer siguen funcionando igual.
+
+> Postman no sustituye al cliente WebSocket: usa la carpeta **Realtime** como referencia y un cliente Socket.IO para los eventos.
+
 ## Cambiar el puerto (baseUrl)
 
 El `docker-compose` publica la app en `http://localhost:3100` porque `.env` (y la plantilla de este entorno) define `APP_HOST_PORT=3100`; `PUBLIC_BASE_URL` usa el mismo puerto. Si usas otro puerto, edita **dos** variables del environment:
@@ -73,7 +82,7 @@ El `docker-compose` publica la app en `http://localhost:3100` porque `.env` (y l
 
 La carpeta **Simulator** usa las claves reales del código (`src/simulator/scenarios.ts`): `slowResponse`, `timeout`, `temporary503`, `sessionExpired`, `insufficientPermission`, `emptyList`, `largeVolume`, `concurrentEdit`, `rateLimit`, `invalidFile` y `duplicateOrder`. Hay requests para consultar/activar escenarios del espacio personal y de equipo (solo `ADMINISTRADOR`), activar todos, y una comprobación de `429 RATE_LIMITED` con cabecera `Retry-After`.
 
-**Pedido repetido (`duplicateOrder`, Etapa 3):** ejecuta *Pedido repetido: activar duplicateOrder*, añade un item al carrito y usa *Pedido repetido: crear pedido dos veces (script)*. El interceptor sustituye la cabecera por `duplicate-order-<spaceId>`: el primer POST crea el pedido y el segundo (lanzado por el script) devuelve el mismo `id` y `status` sin descontar stock otra vez. Límites: solo afecta a `POST /orders` y a un espacio a la vez; una clave por espacio. **`failedAsyncJob` sigue pendiente de Etapa 4** (worker/Redis), no intentes activarlo.
+**Pedido repetido (`duplicateOrder`, Etapa 3):** ejecuta *Pedido repetido: activar duplicateOrder*, añade un item al carrito y usa *Pedido repetido: crear pedido dos veces (script)*. El interceptor sustituye la cabecera por `duplicate-order-<spaceId>`: el primer POST crea el pedido y el segundo (lanzado por el script) devuelve el mismo `id` y `status` sin descontar stock otra vez. Límites: solo afecta a `POST /orders` y a un espacio a la vez; una clave por espacio. **`failedAsyncJob` (Etapa 4)** está disponible: ver la carpeta **Jobs** y el request *Simulator › Activar failedAsyncJob*.
 
 **Ejecuta siempre «Desactivar todos los escenarios (limpieza)» al terminar**, porque la configuración persiste por espacio y afecta a las respuestas posteriores. El request de limpieza ya incluye `duplicateOrder: false`.
 

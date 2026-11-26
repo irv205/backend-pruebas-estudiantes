@@ -1,8 +1,8 @@
-# Backend de práctica para estudiantes — Etapas 1, 2 y 3
+# Backend de práctica para estudiantes — Etapas 1 a 4
 
-API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL**, ejecutada con **Docker Compose**. La Etapa 2 añade **categorías, archivos, tareas, roles de equipo y simulador de escenarios**; la Etapa 3 añade **carrito, pedidos con stock transaccional, pagos simulados, idempotencia persistida y el escenario `duplicateOrder`**.
+API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL**, ejecutada con **Docker Compose**. La Etapa 2 añade **categorías, archivos, tareas, roles de equipo y simulador**; la Etapa 3, **carrito, pedidos transaccionales, pagos simulados e idempotencia**; la Etapa 4 añade **notificaciones, WebSocket/chat con replay, exportaciones asíncronas (Redis/BullMQ + worker) y login web con cookies HttpOnly + CSRF**.
 
-> **Persistencia: código vs datos.** El código fuente vive en este repositorio Git (`.gitignore` excluye `node_modules`, `dist`, `.env` y backups; `.gitattributes` fuerza `eol=lf` en `*.sh`/`*.bash` y `eol=crlf` en `*.ps1`/`*.cmd`). Docker guarda la **ejecución** y los **datos**: PostgreSQL, Mailpit y el almacenamiento de archivos usan **volúmenes nombrados** (`postgres_data`, `mailpit_data`, `files_data` y `minio_data`, reservado). Borrar contenedores no borra volúmenes.
+> **Persistencia: código vs datos.** El código fuente vive en este repositorio Git (`.gitignore` excluye `node_modules`, `dist`, `.env` y backups; `.gitattributes` fuerza `eol=lf` en `*.sh`/`*.bash` y `eol=crlf` en `*.ps1`/`*.cmd`). Docker guarda la **ejecución** y los **datos**: PostgreSQL, Redis, Mailpit y el almacenamiento de archivos usan **volúmenes nombrados** (`postgres_data`, `redis_data`, `mailpit_data`, `files_data` y `minio_data`, reservado). Borrar contenedores no borra volúmenes.
 
 ## Guías
 
@@ -16,9 +16,10 @@ API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL
 - **Roles efectivos:** el propietario siempre es `ADMINISTRADOR`; `LECTOR` solo consulta; `EDITOR` crea/edita/elimina recursos; `ADMINISTRADOR` además gestiona miembros, escenarios y resets.
 - **Secretos** solo como ejemplos en `.env.example`; `.env` está gitignored. Versiones fijadas, prohibido `latest`.
 - **Logs** JSON a `stdout` con `requestId`; nunca contraseñas ni tokens.
-- **Migraciones incrementales:** `20241124000000_init` (Etapa 1), `20241125000000_stage2` (Etapa 2) y `20241126000000_stage3` (Etapa 3). Las dos primeras no se han modificado.
+- **Migraciones incrementales:** `20241124000000_init` (Etapa 1), `20241125000000_stage2` (Etapa 2), `20241126000000_stage3` (Etapa 3) y `20241127000000_stage4` (Etapa 4). Las anteriores no se han modificado.
 - **Etapa 3:** importes como enteros en unidad mínima con `currency` explícita; stock descontado dentro de la transacción de creación del pedido; precios/nombres comprados guardados como snapshot; idempotencia persistida por `(spaceId, userId, key)`; pagos simulados sin cobros reales.
-- No se implementa la Etapa 4 (WebSockets, worker/Redis, notificaciones, exportaciones).
+- **Etapa 4:** Redis/BullMQ es **solo transporte** de la cola; PostgreSQL es la **fuente de verdad** del estado de los trabajos (`ExportJob`). El worker usa la misma imagen que la API con otro comando. En CI/e2e se usa `JOBS_QUEUE_MODE=inline` (sin Redis).
+- **Etapa 4:** los eventos se persisten en `RealtimeEvent` para poder hacer replay; los permisos de sala se comprueban contra la BD en cada conexión/mensaje. El espacio personal solo lo usa su propietario.
 
 ### Qué pasó con MinIO
 
@@ -256,6 +257,17 @@ El puerto publicado se controla únicamente con `APP_HOST_PORT` en `.env` (en es
 | `SCENARIO_MAX_CONCURRENCY` | `5` | Máximo de respuestas lentas simultáneas (excederlo da 429 `SIMULATOR_BUSY`). |
 | `SCENARIO_LARGE_VOLUME_COUNT` | `500` | Tope de registros generados por "gran volumen". |
 
+### Variables nuevas de la Etapa 4
+
+| Variable | Default | Uso |
+|---|---|---|
+| `REDIS_URL` | `redis://redis:6379` | Conexión interna a Redis para BullMQ (solo red de Compose). |
+| `JOBS_QUEUE_MODE` | `redis` | `redis`: la API encola y el worker procesa; `inline`: la API procesa de forma síncrona (CI/e2e, sin Redis). |
+| `JOBS_RETENTION_HOURS` | `24` | El worker purga exportaciones finalizadas más antiguas y sus objetos al arrancar. |
+| `WORKER_MODE` | `false` | Lo fija Compose en el servicio `worker`; no lo pongas a `true` en la API. |
+
+La dependencia de Redis en `app`/`worker` es `required: false`: con `JOBS_QUEUE_MODE=inline` la API arranca aunque Redis esté parado. El worker se declara con la **misma imagen** y `command: ["npm", "run", "worker:dev"]` (en producción, `worker:prod` → `node dist/worker/main.js`). No publica puerto HTTP.
+
 ## Endpoints de la Etapa 2
 
 Todos bajo `/api/v1`. Autenticación con `Authorization: Bearer <token>`; el header opcional `x-space-id` (UUID o slug) selecciona un espacio de equipo al que pertenece el usuario. Sin él se usa el espacio personal.
@@ -377,7 +389,7 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/js
 | Límite alcanzado | `rateLimit` | `{"rateLimit":true}` | `429 RATE_LIMITED` con `Retry-After: 5`. |
 | Archivo inválido | `invalidFile` | `{"invalidFile":true}` | `400 INVALID_FILE_TYPE` en subidas. |
 | Pedido repetido | `duplicateOrder` | `{"duplicateOrder":true}` | Fuerza `Idempotency-Key: duplicate-order-<spaceId>` en `POST /orders`: el reintento devuelve el mismo pedido sin descontar stock dos veces. Solo `/orders`, una clave por espacio. |
-| Trabajo asíncrono fallido | — | **No implementado (pendiente de Etapa 4)** | Requiere worker/Redis y consulta de estado. |
+| Trabajo asíncrono fallido | `failedAsyncJob` | `{"failedAsyncJob":true}` | Todos los exports del espacio terminan en `FAILED` con error reproducible; ver [Etapa 4](#etapa-4-notificaciones-tiempo-real-trabajos-y-sesión-web). |
 
 Los códigos de error estables siguen el contrato `{ error: { code, message, fields? }, requestId }`.
 
@@ -439,6 +451,102 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 Cualquier otra transición → `409 INVALID_STATUS_TRANSITION` (pagar un pedido pagado, cancelar uno fallido o cancelar dos veces). Los intentos se consultan en `GET /orders/:id` → `data.payments[]` (`id`, `outcome`, `attempt`, `message`, `createdAt`). No existen `/payments` ni `/payments/:id`.
 
+## Etapa 4: notificaciones, tiempo real, trabajos y sesión web
+
+### Notificaciones
+
+Todas bajo `/api/v1`, con `Authorization: Bearer <token>` y `x-space-id` opcional. Se generan al aprobar/cancelar un pedido y al completar/fallar un export job. Cada notificación pertenece a un `(spaceId, userId)`; otro usuario nunca la ve.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/notifications?page=1&limit=20&unreadOnly=true` | Listado paginado del usuario en el espacio. |
+| `GET` | `/notifications/unread-count` | `{ "data": { "count": n } }`. |
+| `GET` | `/notifications/:id` | Detalle (404 si es de otro usuario/espacio). |
+| `PATCH` | `/notifications/:id/read` | Marca una como leída y fija `readAt`. |
+| `PATCH` | `/notifications/read-all` | Marca todas las del usuario en el espacio. |
+
+Tipos: `ORDER_APPROVED`, `ORDER_CANCELLED`, `JOB_COMPLETED`, `JOB_FAILED`, `CHAT_MESSAGE`. `resourceType`/`resourceId` apuntan al recurso de origen.
+
+### WebSocket y chat
+
+El servidor Socket.IO se monta en el mismo puerto que la API (path por defecto `/socket.io`). Se conecta con el **JWT de acceso**:
+
+```js
+const socket = io('http://localhost:3100', {
+  auth: { token: accessToken },          // también acepta Authorization: Bearer <token>
+  transports: ['websocket'],
+});
+socket.on('connection:ready', ({ user, spaces }) => { /* salas ya suscritas */ });
+```
+
+La conexión une automáticamente las salas `user:<userId>`, `space:<spaceId>` (espacio personal + equipos donde hay membresía) y `chat:<roomId>` (salas donde el usuario es miembro). Un token inválido produce `ws:error` (`AUTH_TOKEN_INVALID` / `AUTH_TOKEN_EXPIRED`) y desconexión.
+
+| Evento cliente → servidor | Payload | Respuesta |
+|---|---|---|
+| `chat:send` | `{ roomId, content }` | ACK con el mensaje guardado; difunde `chat:message` a `chat:<roomId>`. |
+| `events:replay` | `{ lastEventId, spaceId?, limit? }` (limit ≤ 100) | `events:replay` con `{ events, lastEventId, hasMore }`. |
+
+| Evento servidor → cliente | Payload |
+|---|---|
+| `chat:message` | `{ id, roomId, spaceId, senderId, content, sequence, createdAt }` |
+| `resource:changed` | `{ id, spaceId, type, action, resourceType, resourceId, createdAt }` |
+| `notification:new` | Notificación completa (`id`, `type`, `title`, `body`, `isRead`, …) |
+| `job:updated` | `{ id, status, progress, fileObjectId, error }` |
+| `events:replay` | `{ events: [{ id, spaceId, type, payload, createdAt }], lastEventId, hasMore }` |
+| `ws:error` | `{ code, message }` (`CHAT_ROOM_NOT_FOUND`, `SPACE_ACCESS_DENIED`, `CHAT_MEMBER_REQUIRED`, `VALIDATION_ERROR`, …) |
+
+`resource:changed` se emite al crear/editar/borrar productos, notas, tareas y categorías; al crear/pagar/cancelar pedidos; al exportar; y al resetear un espacio. `type` y `resourceType` usan el mismo valor (`PRODUCT`, `NOTE`, `TASK`, `CATEGORY`, `ORDER`, `EXPORT_JOB`, `SPACE`); `action` es `created`, `updated`, `deleted` o `reset`.
+
+Para recuperar eventos perdidos tras una reconexión, guarda el último `id` recibido y solicita:
+
+```js
+socket.emit('events:replay', { lastEventId: 42, spaceId: mySpaceId, limit: 100 });
+socket.on('events:replay', ({ events, lastEventId, hasMore }) => { /* aplica en orden */ });
+```
+
+Si omites `spaceId`, se devuelven eventos de **todos** los espacios a los que pertenezca el usuario. El reset del espacio borra sus eventos antiguos para evitar replay de recursos ya inexistentes.
+
+Endpoints REST auxiliares del chat (Bearer + `x-space-id`):
+
+- `POST /chat/rooms` `{ name, memberIds? }` (solo EDITOR/ADMIN; por defecto todos los miembros del espacio).
+- `GET /chat/rooms` → salas visibles para el usuario.
+- `GET /chat/rooms/:id/messages?page=1&limit=20` → historial ordenado por `sequence`.
+
+### Exportaciones asíncronas
+
+Ciclo de vida: `PENDING` → `PROCESSING` (progreso 10) → `COMPLETED` (progreso 100, `fileObjectId`, `finishedAt`) o `FAILED` (`error`, `finishedAt`). El CSV se guarda como `FileObject` en storage local (`spaces/<spaceId>/exports/<jobId>.csv`) y se descarga por la API con `Content-Disposition: attachment`.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `/jobs/exports` `{ kind, filters? }` | `kind`: `PRODUCTS_CSV` o `NOTES_CSV`; filtros: `search`, `categoryId` (productos), `isArchived` (notas). |
+| `GET` | `/jobs/exports?status=COMPLETED&page=1&limit=20` | Paginado por espacio (no-admin ve solo los suyos). |
+| `GET` | `/jobs/exports/:id` | Estado y metadatos. |
+| `GET` | `/jobs/exports/:id/download` | CSV solo si `COMPLETED`; si no → `409 EXPORT_NOT_READY`. |
+
+```bash
+JOB=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"kind":"PRODUCTS_CSV","filters":{"search":"teclado"}}' \
+  http://localhost:3100/api/v1/jobs/exports | jq -r .data.id)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3100/api/v1/jobs/exports/$JOB
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3100/api/v1/jobs/exports/$JOB/download
+```
+
+Con `JOBS_QUEUE_MODE=redis` (default en Docker), la API encola en BullMQ y el servicio **`worker`** (misma imagen, sin puerto HTTP) procesa: actualiza PostgreSQL, genera el CSV, guarda el `FileObject`, emite `job:updated` y crea la notificación. Al arrancar, el worker **reencola trabajos `PENDING`/`PROCESSING` huérfanos**. Con `JOBS_QUEUE_MODE=inline` la API misma procesa de forma síncrona (recomendado para CI/e2e; no necesita Redis ni worker).
+
+Escenario `failedAsyncJob`: `PATCH /spaces/me/scenarios` `{ "failedAsyncJob": true }` hace que **todos** los exports del espacio terminen en `FAILED` con un error reproducible (`failedAsyncJob está activo`). Desactívalo para volver a exportar. No altera las respuestas HTTP ni otros espacios.
+
+### Login web con cookies HttpOnly + CSRF
+
+El flujo Bearer actual **no cambia**. Para navegador se añade:
+
+1. `POST /auth/web/login` `{ email, password }` → access token en el body, cookies `refresh_token` y `csrf_token` (`HttpOnly`, `SameSite=Lax`, `Path=/api/v1`, `Secure` si `NODE_ENV=production`). El body **no incluye** el refresh token.
+2. `GET /auth/csrf` → `{ data: { csrfToken } }` y actualiza la cookie `csrf_token` (double-submit).
+3. Enviar el access token como `Authorization: Bearer …` en las rutas de API y, en las mutaciones donde la autenticación provenga de cookie, la cabecera `X-CSRF-Token` con ese valor.
+4. `POST /auth/web/refresh` lee la cookie, rota el refresh token, actualiza la cookie y devuelve un access token nuevo.
+5. `POST /auth/web/logout` revoca el refresh y limpia ambas cookies.
+
+El guard de CSRF se aplica **solo** a mutaciones con cookie de sesión y sin `Authorization: Bearer`; devuelve `403 CSRF_TOKEN_INVALID` si falta o no coincide `X-CSRF-Token`. CORS se configura con `credentials: true`: en producción usa un `CORS_ORIGIN` explícito (con `*` se refleja el origen, nunca se envía el comodín con credenciales).
+
 ## Flujos rápidos de la Etapa 1 (sin cambios)
 
 ```bash
@@ -453,7 +561,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" http://localhost:3100/api/v1/spac
 curl -X POST http://localhost:3100/api/v1/public/sandboxes/$SANDBOX/reset
 ```
 
-El reset borra solo los datos de ese espacio (productos, categorías, tareas, notas, archivos y escenarios), deja constancia en `SpaceResetAudit` y restaura los datos canónicos en la demo. Nunca toca volúmenes ni la base completa.
+El reset borra solo los datos de ese espacio (productos, categorías, tareas, notas, archivos, escenarios y eventos de replay; emite un evento `SPACE` de reset), deja constancia en `SpaceResetAudit` y restaura los datos canónicos en la demo. Nunca toca volúmenes ni la base completa.
 
 ## Migraciones y seeds
 
@@ -471,12 +579,16 @@ La migración `20241125000000_stage2` recrea el enum `MembershipRole` (`LECTOR`,
 |---|---|---|
 | `Bind for 0.0.0.0:3100 failed: port is already allocated` o `./start.sh` avisa de puerto ocupado | Otro proyecto/contenedor usa 3100 | **No detengas** el contenedor ajeno. Identifícalo con `docker ps --format '{{.Names}} {{.Ports}}'` y cambia `APP_HOST_PORT` en `.env` (junto con `PUBLIC_BASE_URL` y las variables de Postman). |
 | Servicio `migrate` en `Exited(1)` | Migración fallida o `DATABASE_URL`/contraseña incoherente; a veces PostgreSQL aún no estaba *healthy* | `docker compose logs --tail=100 migrate`; comprueba que `POSTGRES_PASSWORD` coincide con la contraseña de `DATABASE_URL`. Corrige `.env` y vuelve a `./start.sh` (las migraciones son idempotentes). No borres volúmenes. |
-| Errores de módulos / `Cannot find module` tras cambiar dependencias | `node_modules` del contenedor quedó viejo | `docker compose build app` (o `docker compose build --no-cache app`) y reinicia. El contenedor usa un volumen anónimo para `node_modules`; no lo mezcles con el del host. |
+| Errores de módulos / `Cannot find module` tras cambiar dependencias | `node_modules` del contenedor quedó viejo (el volumen anónimo **no** se actualiza solo al reconstruir la imagen) | `docker compose build app worker`, luego `docker compose exec app npm ci && docker compose exec app npx prisma generate` (y lo mismo en `worker`) y `docker compose restart app worker`. No mezcles `node_modules` del host con el del contenedor. |
 | `npm` se queja de la versión de Node en el host (EBADENGINE) o `nest: not found` | Node del host fuera de rango (p. ej. Node 25) | Usa Docker, o `nvm use` (lee `.nvmrc` → `20.18.1`). El rango soportado es `>=20.18.1 <21`. |
 | `/health/ready` no devuelve 200 | Primera vez que arranca o la app cayó | Espera unos segundos; revisa `docker compose logs --tail=100 app` y `docker compose ps`. El healthcheck comprueba PostgreSQL. |
 | Mensaje `$'\r': command not found` al ejecutar `./start.sh` en Windows | Finales de línea CRLF | El repo incluye `.gitattributes` con `eol=lf` para `*.sh` (y `eol=crlf` para `*.ps1`/`*.cmd`); vuelve a clonar o normaliza con `git add --renormalize .`. Mejor: usa `.\start.ps1`, que no depende de bash. |
 | `curl` no existe en Windows | No viene instalado por defecto | Usa el equivalente con `Invoke-WebRequest` / `Invoke-RestMethod` mostrado arriba, o instala curl. |
 | No aparece MinIO / errores al activar `FILES_STORAGE=s3` | El servicio está **comentado** a propósito (imagen no verificable desde el entorno original) | No es un fallo: con `FILES_STORAGE=local` los archivos van al volumen `files_data` y las pruebas usan un stub. Solo descomenta MinIO si verificas el tag y configuras `MINIO_ROOT_*` y `S3_*`. |
+| Los export jobs se quedan en `PENDING` | Modo `redis` sin worker, Redis caído o `WORKER_MODE` no fijado | `docker compose ps` y `docker compose logs --tail=100 worker`; debe aparecer `Worker BullMQ escuchando exports`. Para pruebas sin Redis usa `JOBS_QUEUE_MODE=inline`. |
+| El worker se reinicia en bucle con `exit 0` | `WORKER_MODE` no llegó al contenedor (ConfigModule valida antes del `main`) | Verifica que el servicio `worker` de `docker-compose.yml` incluya `WORKER_MODE: "true"` y reinícialo. |
+| WebSocket devuelve `ws:error AUTH_TOKEN_INVALID` | Token de acceso vencido o se envió el refresh token | Usa un `accessToken` vigente en `auth.token` o `Authorization: Bearer`; renueva con `/auth/refresh`. |
+| Mutación web devuelve `403 CSRF_TOKEN_INVALID` | Falta `X-CSRF-Token` o la cookie `csrf_token` cambió | Llama a `GET /auth/csrf`, guarda `data.csrfToken` y envíalo en la cabecera. Con Bearer el guard no se aplica. |
 
 ## Backup y restore
 
@@ -506,7 +618,7 @@ docker compose exec -T postgres createdb -U "$POSTGRES_USER" practicas_restore_t
 docker compose exec -T postgres psql -U "$POSTGRES_USER" -d practicas_restore_test \
   -v ON_ERROR_STOP=1 < backup.sql
 
-# Comprobación rápida: deben aparecer init, stage2 y stage3 con finished_at
+# Comprobación rápida: deben aparecer init, stage2, stage3 y stage4 con finished_at
 docker compose exec -T postgres psql -U "$POSTGRES_USER" -d practicas_restore_test \
   -c "SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY finished_at;"
 ```
@@ -557,11 +669,20 @@ npm test                                # en el host solo con Node 20.18.1 y npm
 docker compose up -d postgres
 docker compose exec postgres createdb -U practicas practicas_test   # si no existe
 docker compose exec \
+  -e JOBS_QUEUE_MODE=inline \
   -e DATABASE_URL='postgresql://practicas:dev_password_change_me@postgres:5432/practicas_test?schema=public' \
   app sh -c 'npm run prisma:migrate && npm run test:e2e'
 ```
 
-Estado: **11 suites e2e, 67/67 pruebas** (las 49 anteriores + 18 nuevas de carrito/pedidos: carrito y totales, descuento de stock, snapshot de precio, idempotencia sin doble descuento, pagos `APPROVED`/`REJECTED`/`PENDING`, reposición en rechazo/cancelación, transiciones inválidas `409`, validación `422` y `duplicateOrder`) y **2 suites unitarias, 5/5**. Los archivos no requieren MinIO en CI: se usa un stub inyectado en el token `STORAGE_PROVIDER`.
+El `setupFiles` de Jest también fija `JOBS_QUEUE_MODE=inline` y `WORKER_MODE=false`, así que las e2e **no dependen de Redis ni del worker** aunque el `.env` diga `redis`. Para no hardcodear la contraseña también puedes derivar la URL dentro del contenedor:
+
+```bash
+docker compose exec -T -e JOBS_QUEUE_MODE=inline app sh -c \
+  'TEST_URL="$(printf "%s" "$DATABASE_URL" | sed "s|/practicas?|/practicas_test?|")"; \
+   DATABASE_URL="$TEST_URL" npm run test:e2e'
+```
+
+Estado: **15 suites e2e, 87/87 pruebas** (67 de Etapas 1-3 + notificaciones, realtime/chat/replay, jobs inline/descarga/`failedAsyncJob` y cookies/CSRF) y **4 suites unitarias, 9/9**. Los archivos no requieren MinIO en CI: se usa un stub inyectado en el token `STORAGE_PROVIDER`.
 
 > Las e2e se ejecutan **dentro del contenedor `app`** (donde el host `postgres` existe) contra `practicas_test`, como muestra el comando anterior. Nunca apuntes las pruebas a la BD de los estudiantes ni borres volúmenes.
 
@@ -576,7 +697,7 @@ backendPruebas/
 ├── .env.example                    plantilla VERSIONADA (placeholders)
 ├── .env                            local, NUNCA versionado (ignorado por Git)
 ├── .gitignore, .gitattributes      ignorados; eol=lf para *.sh, eol=crlf para *.ps1/*.cmd
-├── docker-compose.yml, Dockerfile  app, postgres, mailpit, migrate (MinIO comentado)
+├── docker-compose.yml, Dockerfile  app, worker, postgres, redis, mailpit, migrate (MinIO comentado)
 ├── install.sh, start.sh,           wrappers bash en la raíz (macOS / Linux)
 │   stop.sh, restart.sh
 ├── install.ps1, start.ps1,         wrappers PowerShell en la raíz (Windows nativo)
@@ -608,19 +729,23 @@ src/
   files/                                     multipart, cuotas, storage S3/local, limpieza
   cart/                                      carrito por usuario+espacio, totales del servidor
   orders/                                    pedidos transaccionales, pagos simulados, idempotencia
-  simulator/                                 config por espacio, interceptor, endpoints
+  simulator/                                 config por espacio, interceptor, endpoints (12 escenarios)
+  notifications/                             notificaciones por usuario/espacio + WS notification:new
+  realtime/                                  gateway Socket.IO, chat, replay, emisores de eventos
+  jobs/, worker/                             export jobs, cola BullMQ/inline, worker y retención
+  web-auth/                                  cookies HttpOnly, CSRF double-submit, login web
   mail/, database/                           SMTP de pruebas y datos canónicos
 prisma/
-  schema.prisma, migrations/ (init, stage2, stage3), seed.ts
-test/                                       11 suites e2e (10 anteriores + orders) + utils
+  schema.prisma, migrations/ (init, stage2, stage3, stage4), seed.ts
+test/                                       15 suites e2e + utils (JOBS_QUEUE_MODE=inline)
 Dockerfile, docker-compose.yml, .env.example
 ```
 
-## Pendiente para Etapa 4
+## Pendiente real
 
-- WebSockets/notificaciones, worker/Redis y exportaciones asíncronas (incluido el escenario `failedAsyncJob`).
 - Portal del estudiante (UI) y guías cliente (JS/Kotlin/Retrofit) para el Nivel 5.
-- Flujo web con cookies `HttpOnly` + CSRF (hoy `Authorization: Bearer`).
+- MinIO sigue comentado (imagen no verificable desde el entorno original); las exportaciones usan storage local.
+- El replay cubre los eventos persistidos por espacio; no hay suscripción selectiva por tipo de recurso.
 
 ## Limitaciones conocidas
 
@@ -628,3 +753,5 @@ Dockerfile, docker-compose.yml, .env.example
 - La limpieza S3 no es transaccional con PostgreSQL; se registran claves pendientes para reconciliación.
 - El host de generación tenía Node 25; la imagen y `.nvmrc` fijan Node 20.18.1, que es el entorno objetivo.
 - El puerto host 3000 estaba ocupado por un proyecto ajeno durante el smoke test; no se detuvo ese contenedor.
+- Las salas WebSocket se resuelven al conectar: si cambia la membresía de un equipo, reconecta para refrescar las suscripciones.
+- BullMQ no garantiza exactly-once: se usa un `updateMany` condicional para evitar procesar dos veces un trabajo ya `COMPLETED`. Para despliegues con varios workers, revisar la estrategia de concurrencia.

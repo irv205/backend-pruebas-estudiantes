@@ -17,6 +17,7 @@ import { isUuid } from '../common/utils/uuid.util';
 import { DEMO_SPACE_SLUG, ensureDemoSpace } from '../database/demo-data';
 import { FilesService } from '../files/files.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeEventsService } from '../realtime/realtime-events.service';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { InviteMemberDto, UpdateMemberDto } from './dto/member.dto';
 
@@ -30,6 +31,7 @@ export class SpacesService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly files: FilesService,
     private readonly access: SpaceAccessService,
+    private readonly realtime: RealtimeEventsService,
   ) {}
 
   onModuleInit(): void {
@@ -281,6 +283,8 @@ export class SpacesService implements OnModuleInit, OnModuleDestroy {
       this.prisma.task.deleteMany({ where: { spaceId } }),
       // El reset devuelve el simulador a su estado estable (sin escenarios).
       this.prisma.spaceScenarioConfig.deleteMany({ where: { spaceId } }),
+      // El replay no debe devolver eventos de recursos que ya no existen.
+      this.prisma.realtimeEvent.deleteMany({ where: { spaceId } }),
       this.prisma.spaceResetAudit.create({
         data: { spaceId, requestedBy: requestedBy ?? null, reason },
       }),
@@ -289,6 +293,12 @@ export class SpacesService implements OnModuleInit, OnModuleDestroy {
     if (space.type === SpaceType.DEMO) {
       await ensureDemoSpace(this.prisma);
     }
+    await this.realtime.recordSafely(spaceId, 'SPACE', {
+      action: 'reset',
+      resourceType: 'SPACE',
+      resourceId: spaceId,
+      reason,
+    });
     return space;
   }
 }

@@ -8,6 +8,7 @@ import { SpaceAccessService } from '../access/space-access.service';
 import { getPageParams, paginate } from '../common/pagination/pagination';
 import { slugify } from '../common/utils/slug.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeEventsService } from '../realtime/realtime-events.service';
 import { ProductsService } from '../products/products.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { QueryCategoriesDto } from './dto/query-categories.dto';
@@ -20,6 +21,7 @@ export class CategoriesService {
     private readonly prisma: PrismaService,
     private readonly access: SpaceAccessService,
     private readonly products: ProductsService,
+    private readonly realtime: RealtimeEventsService,
   ) {}
 
   async list(spaceId: string, query: QueryCategoriesDto, activeOnly = false) {
@@ -75,7 +77,7 @@ export class CategoriesService {
     this.access.assertWritable(space);
     const slug = slugify(dto.name);
     await this.assertNameAvailable(space.id, slug);
-    return this.prisma.category.create({
+    const category = await this.prisma.category.create({
       data: {
         spaceId: space.id,
         name: dto.name.trim(),
@@ -83,6 +85,12 @@ export class CategoriesService {
         isActive: dto.isActive ?? true,
       },
     });
+    await this.realtime.recordSafely(space.id, 'CATEGORY', {
+      action: 'created',
+      resourceType: 'CATEGORY',
+      resourceId: category.id,
+    });
+    return category;
   }
 
   async update(space: Space, id: string, dto: UpdateCategoryDto): Promise<Category> {
@@ -107,7 +115,14 @@ export class CategoriesService {
         fields: { version: ['La versión enviada no coincide con la actual.'] },
       });
     }
-    return this.findOne(space.id, id);
+    const updated = await this.findOne(space.id, id);
+    await this.realtime.recordSafely(space.id, 'CATEGORY', {
+      action: 'updated',
+      resourceType: 'CATEGORY',
+      resourceId: updated.id,
+      version: updated.version,
+    });
+    return updated;
   }
 
   async remove(space: Space, id: string): Promise<void> {
@@ -119,6 +134,11 @@ export class CategoriesService {
         message: 'La categoría no existe en este espacio.',
       });
     }
+    await this.realtime.recordSafely(space.id, 'CATEGORY', {
+      action: 'deleted',
+      resourceType: 'CATEGORY',
+      resourceId: id,
+    });
   }
 
   private async assertNameAvailable(spaceId: string, slug: string, exceptId?: string): Promise<void> {

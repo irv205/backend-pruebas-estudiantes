@@ -7,6 +7,7 @@ import { Note, Prisma } from '@prisma/client';
 import { getPageParams, paginate } from '../common/pagination/pagination';
 import { FilesService } from '../files/files.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeEventsService } from '../realtime/realtime-events.service';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { QueryNotesDto } from './dto/query-notes.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
@@ -17,6 +18,7 @@ export class NotesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly files: FilesService,
+    private readonly realtime: RealtimeEventsService,
   ) {}
 
   async list(spaceId: string, ownerId: string, query: QueryNotesDto) {
@@ -63,7 +65,7 @@ export class NotesService {
   }
 
   async create(spaceId: string, ownerId: string, dto: CreateNoteDto): Promise<Note> {
-    return this.prisma.note.create({
+    const note = await this.prisma.note.create({
       data: {
         spaceId,
         ownerId,
@@ -75,6 +77,13 @@ export class NotesService {
         isArchived: dto.isArchived ?? false,
       },
     });
+    await this.realtime.recordSafely(spaceId, 'NOTE', {
+      action: 'created',
+      resourceType: 'NOTE',
+      resourceId: note.id,
+      ownerId,
+    });
+    return note;
   }
 
   /** Actualización con control de concurrencia optimista (409 si cambió la versión). */
@@ -108,7 +117,15 @@ export class NotesService {
       });
     }
 
-    return this.findOne(spaceId, ownerId, id);
+    const updated = await this.findOne(spaceId, ownerId, id);
+    await this.realtime.recordSafely(spaceId, 'NOTE', {
+      action: 'updated',
+      resourceType: 'NOTE',
+      resourceId: updated.id,
+      ownerId,
+      version: updated.version,
+    });
+    return updated;
   }
 
   async remove(spaceId: string, ownerId: string, id: string): Promise<void> {
@@ -122,5 +139,11 @@ export class NotesService {
     // La nota no tiene campo de archivos en Etapa 1/2; si en el futuro se
     // enlazan objetos con entityType=NOTE, se limpian aquí.
     await this.files.deleteByEntity('NOTE', id);
+    await this.realtime.recordSafely(spaceId, 'NOTE', {
+      action: 'deleted',
+      resourceType: 'NOTE',
+      resourceId: id,
+      ownerId,
+    });
   }
 }

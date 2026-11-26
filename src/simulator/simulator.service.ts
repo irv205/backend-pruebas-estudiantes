@@ -29,6 +29,7 @@ export class SimulatorService {
       else if (key === 'rateLimit') data.rateLimit = value;
       else if (key === 'invalidFile') data.invalidFile = value;
       else if (key === 'duplicateOrder') data.duplicateOrder = value;
+      else if (key === 'failedAsyncJob') data.failedAsyncJob = value;
     }
     return this.prisma.spaceScenarioConfig.upsert({
       where: { spaceId },

@@ -1,7 +1,9 @@
-// Esquema de datos — Etapas 1-3
+// Esquema de datos — Etapas 1-4
 // Una sola base PostgreSQL compartida; el aislamiento se logra con `spaceId`
 // obligatorio en cada recurso (products, notes, categories, tasks, files,
-// carritos, pedidos e idempotencia).
+// carritos, pedidos, idempotencia, notificaciones, chat y trabajos).
+// PostgreSQL es la FUENTE DE VERDAD del estado de los trabajos; Redis/BullMQ
+// solo transporta los mensajes de la cola (ver JOBS_QUEUE_MODE).
 
 generator client {
   provider = "prisma-client-js"
@@ -67,6 +69,28 @@ enum PaymentOutcome {
   PENDING
 }
 
+// Etapa 4: tipos de notificación entregados al usuario.
+enum NotificationType {
+  ORDER_APPROVED
+  ORDER_CANCELLED
+  JOB_COMPLETED
+  JOB_FAILED
+  CHAT_MESSAGE
+}
+
+// Etapa 4: exportaciones soportadas por el worker.
+enum ExportKind {
+  PRODUCTS_CSV
+  NOTES_CSV
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   email         String   @unique
@@ -90,6 +114,12 @@ model User {
   carts               Cart[]
   orders              Order[]
   idempotencyRecords  IdempotencyRecord[]
+
+  // Etapa 4
+  notifications Notification[]
+  chatMemberships ChatMember[]
+  chatMessages    ChatMessage[]
+  exportJobs      ExportJob[]
 }
 
 model Space {
@@ -115,6 +145,12 @@ model Space {
   carts         Cart[]
   orders        Order[]
   idempotencyRecords IdempotencyRecord[]
+
+  // Etapa 4
+  notifications Notification[]
+  chatRooms     ChatRoom[]
+  realtimeEvents RealtimeEvent[]
+  exportJobs    ExportJob[]
 
   @@index([type, expiresAt])
 }
@@ -299,6 +335,7 @@ model FileObject {
 
   space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   owner User? @relation("FileOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  exportJobs ExportJob[]
 
   @@index([spaceId])
   @@index([entityType, entityId])
@@ -320,6 +357,8 @@ model SpaceScenarioConfig {
   invalidFile           Boolean  @default(false)
   // Etapa 3: fuerza una clave de idempotencia fija en POST /orders.
   duplicateOrder        Boolean  @default(false)
+  // Etapa 4: todos los export jobs del espacio terminan en FAILED.
+  failedAsyncJob        Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -448,4 +487,112 @@ model IdempotencyRecord {
 
   @@unique([spaceId, userId, key])
   @@index([spaceId, userId])
+}
+
+// ── Etapa 4: notificaciones, chat, replay y trabajos asíncronos ─────────────
+
+/// Notificación por usuario dentro de un espacio. `resourceType`/`resourceId`
+/// permiten al cliente navegar al recurso que originó el aviso.
+model Notification {
+  id           String           @id @default(uuid()) @db.Uuid
+  spaceId      String           @db.Uuid
+  userId       String           @db.Uuid
+  title        String
+  body         String
+  type         NotificationType
+  isRead       Boolean          @default(false)
+  resourceType String?
+  resourceId   String?          @db.Uuid
+  createdAt    DateTime         @default(now())
+  readAt       DateTime?
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, isRead])
+  @@index([spaceId])
+}
+
+/// Sala de chat de un espacio. Los miembros se modelan con ChatMember para
+/// poder autorizar por pertenencia/rol sin depender de un array mutable.
+model ChatRoom {
+  id        String        @id @default(uuid()) @db.Uuid
+  spaceId   String        @db.Uuid
+  name      String
+  createdAt DateTime      @default(now())
+
+  space    Space         @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  members  ChatMember[]
+  messages ChatMessage[]
+
+  @@index([spaceId])
+}
+
+model ChatMember {
+  id     String @id @default(uuid()) @db.Uuid
+  roomId String @db.Uuid
+  userId String @db.Uuid
+
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
+}
+
+/// `sequence` es consecutivo por sala y sirve para ordenar el historial.
+model ChatMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  roomId    String   @db.Uuid
+  senderId  String   @db.Uuid
+  content   String
+  sequence  Int
+  createdAt DateTime @default(now())
+
+  room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, sequence])
+  @@index([roomId, sequence])
+}
+
+/// Eventos persistidos para replay tras reconexión (`events:replay`).
+/// `id` es secuencial (autoincrement) para poder usar `lastEventId`.
+model RealtimeEvent {
+  id        Int      @id @default(autoincrement())
+  spaceId   String   @db.Uuid
+  type      String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+
+  @@index([spaceId, id])
+  @@index([spaceId, type, id])
+}
+
+/// Estado persistido de una exportación. Redis solo transporta el trabajo;
+/// si el worker cae, PostgreSQL permite recuperar PENDING/PROCESSING.
+model ExportJob {
+  id           String       @id @default(uuid()) @db.Uuid
+  spaceId      String       @db.Uuid
+  ownerId      String       @db.Uuid
+  kind         ExportKind
+  status       ExportStatus @default(PENDING)
+  progress     Int          @default(0)
+  // Filtros originales de la petición; el worker los aplica al generar el CSV.
+  filters      Json?
+  fileObjectId String?      @db.Uuid
+  error        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  finishedAt   DateTime?
+
+  space      Space       @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  owner      User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  fileObject FileObject? @relation(fields: [fileObjectId], references: [id], onDelete: SetNull)
+
+  @@index([spaceId, createdAt])
+  @@index([status, createdAt])
 }

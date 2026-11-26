@@ -12,6 +12,7 @@ import { getPageParams, paginate } from '../common/pagination/pagination';
 import { isUuid } from '../common/utils/uuid.util';
 import { FilesService } from '../files/files.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeEventsService } from '../realtime/realtime-events.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { QueryProductsDto } from './dto/query-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -26,6 +27,7 @@ export class ProductsService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly files: FilesService,
+    private readonly realtime: RealtimeEventsService,
   ) {}
 
   async list(spaceId: string, query: QueryProductsDto) {
@@ -82,7 +84,7 @@ export class ProductsService {
     await this.assertQuota(space);
     const categoryId = await this.resolveCategory(space.id, dto.categoryId);
 
-    return this.prisma.product.create({
+    const product = await this.prisma.product.create({
       data: {
         spaceId: space.id,
         ownerId,
@@ -96,6 +98,13 @@ export class ProductsService {
         images: dto.images ?? [],
       },
     });
+    await this.realtime.recordSafely(space.id, 'PRODUCT', {
+      action: 'created',
+      resourceType: 'PRODUCT',
+      resourceId: product.id,
+      version: product.version,
+    });
+    return product;
   }
 
   /**
@@ -143,7 +152,14 @@ export class ProductsService {
       });
     }
 
-    return this.findOne(space.id, id);
+    const updated = await this.findOne(space.id, id);
+    await this.realtime.recordSafely(space.id, 'PRODUCT', {
+      action: 'updated',
+      resourceType: 'PRODUCT',
+      resourceId: updated.id,
+      version: updated.version,
+    });
+    return updated;
   }
 
   async remove(space: Space, id: string): Promise<void> {
@@ -176,6 +192,11 @@ export class ProductsService {
     // Objetos asociados: ids en `images` y archivos enlazados a la entidad.
     await this.files.deleteByIds((product?.images ?? []).filter((value) => isUuid(value)));
     await this.files.deleteByEntity('PRODUCT', id);
+    await this.realtime.recordSafely(space.id, 'PRODUCT', {
+      action: 'deleted',
+      resourceType: 'PRODUCT',
+      resourceId: id,
+    });
   }
 
   // ── Internos ────────────────────────────────────────────────────────────────

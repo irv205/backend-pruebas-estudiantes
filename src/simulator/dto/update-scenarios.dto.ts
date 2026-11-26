@@ -46,6 +46,10 @@ export class UpdateScenariosDto {
   @IsOptional()
   @IsBoolean()
   duplicateOrder?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  failedAsyncJob?: boolean;
 }
 
 /**Validación en tiempo de ejecución de las claves (defensa en profundidad). */

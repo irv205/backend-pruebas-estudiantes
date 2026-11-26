@@ -9,15 +9,19 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { envValidationSchema } from './config/env.validation';
 import { FilesModule } from './files/files.module';
 import { HealthModule } from './health/health.module';
+import { JobsModule } from './jobs/jobs.module';
 import { MailModule } from './mail/mail.module';
 import { NotesModule } from './notes/notes.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { SimulatorModule } from './simulator/simulator.module';
 import { SpacesModule } from './spaces/spaces.module';
 import { TasksModule } from './tasks/tasks.module';
 import { UsersModule } from './users/users.module';
+import { WebAuthModule } from './web-auth/web-auth.module';
 
 @Module({
   imports: [
@@ -43,6 +47,10 @@ import { UsersModule } from './users/users.module';
     TasksModule,
     FilesModule,
     SimulatorModule,
+    RealtimeModule,
+    NotificationsModule,
+    JobsModule,
+    WebAuthModule,
   ],
 })
 export class AppModule implements NestModule {

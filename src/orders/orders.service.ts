@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   MembershipRole,
+  NotificationType,
   Order,
   OrderItem,
   OrderStatus,
@@ -18,6 +19,8 @@ import { AuthUser } from '../common/types/auth-user';
 import { getPageParams, paginate } from '../common/pagination/pagination';
 import { isUuid } from '../common/utils/uuid.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeEventsService } from '../realtime/realtime-events.service';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 
 const CREATE_OPERATION = 'CREATE_ORDER';
@@ -59,9 +62,24 @@ function isUniqueViolation(error: unknown): boolean {
  */
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly realtime: RealtimeEventsService,
+  ) {}
 
   async create(user: AuthUser, space: Space, key: string): Promise<OrderResponse> {
+    const response = await this.createInternal(user, space, key);
+    await this.realtime.recordSafely(space.id, 'ORDER', {
+      action: 'created',
+      resourceType: 'ORDER',
+      resourceId: response.data.id,
+      status: response.data.status,
+    });
+    return response;
+  }
+
+  private async createInternal(user: AuthUser, space: Space, key: string): Promise<OrderResponse> {
     const where = {
       spaceId_userId_key: { spaceId: space.id, userId: user.id, key },
     };
@@ -220,7 +238,7 @@ export class OrdersService {
     outcome: PaymentOutcome,
   ): Promise<OrderResponse> {
     this.assertUuid(id, 'id');
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const order = await this.findOrderIn(tx, space.id, user.id, role, id);
       if (order.status !== OrderStatus.PENDING_PAYMENT) {
         throw this.invalidTransition(order.status);
@@ -257,6 +275,23 @@ export class OrdersService {
 
       return { data: await this.findOrderIn(tx, space.id, user.id, role, order.id) };
     });
+    await this.realtime.recordSafely(space.id, 'ORDER', {
+      action: 'updated',
+      resourceType: 'ORDER',
+      resourceId: result.data.id,
+      status: result.data.status,
+    });
+    if (outcome === PaymentOutcome.APPROVED) {
+      await this.notifySafely(
+        space.id,
+        result.data.ownerId,
+        NotificationType.ORDER_APPROVED,
+        'Pedido aprobado',
+        `El pedido ${result.data.id} fue aprobado (pago simulado).`,
+        result.data.id,
+      );
+    }
+    return result;
   }
 
   async cancel(
@@ -266,7 +301,7 @@ export class OrdersService {
     id: string,
   ): Promise<OrderResponse> {
     this.assertUuid(id, 'id');
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const order = await this.findOrderIn(tx, space.id, user.id, role, id);
       if (
         order.status !== OrderStatus.PENDING_PAYMENT &&
@@ -293,9 +328,47 @@ export class OrdersService {
 
       return { data: await this.findOrderIn(tx, space.id, user.id, role, order.id) };
     });
+    await this.realtime.recordSafely(space.id, 'ORDER', {
+      action: 'updated',
+      resourceType: 'ORDER',
+      resourceId: result.data.id,
+      status: result.data.status,
+    });
+    await this.notifySafely(
+      space.id,
+      result.data.ownerId,
+      NotificationType.ORDER_CANCELLED,
+      'Pedido cancelado',
+      `El pedido ${result.data.id} fue cancelado; el stock fue repuesto si aplicaba.`,
+      result.data.id,
+    );
+    return result;
   }
 
   // ── Internos ───────────────────────────────────────────────────────────────
+
+  private async notifySafely(
+    spaceId: string,
+    userId: string,
+    type: NotificationType,
+    title: string,
+    body: string,
+    orderId: string,
+  ): Promise<void> {
+    try {
+      await this.notifications.create({
+        spaceId,
+        userId,
+        type,
+        title,
+        body,
+        resourceType: 'ORDER',
+        resourceId: orderId,
+      });
+    } catch {
+      // Las notificaciones son best-effort: el pedido ya se confirmó.
+    }
+  }
 
   private replay(snapshot: Prisma.JsonValue, key: string): OrderResponse {
     if (!snapshot || typeof snapshot !== 'object' || !('data' in snapshot)) {

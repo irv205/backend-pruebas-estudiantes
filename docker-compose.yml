@@ -1,10 +1,14 @@
-# Docker Compose — Etapas 1-2 (desarrollo local, una sola instancia de la API).
+# Docker Compose — Etapas 1-4 (desarrollo local).
 # El código vive en el workspace; Docker guarda la EJECUCIÓN y los DATOS en
 # volúmenes nombrados. Copia .env.example a .env antes de arrancar.
 #
-# Nota: Postgres y SMTP NO se publican al host; solo la API (puerto host
+# Nota: Postgres, Redis y SMTP NO se publican al host; solo la API (puerto host
 # ${APP_HOST_PORT:-3000} -> contenedor 3000) y la UI de Mailpit (127.0.0.1:8025)
 # tienen puerto publicado.
+#
+# Redis es SOLO la cola de trabajos (BullMQ). PostgreSQL es la fuente de verdad.
+# Con JOBS_QUEUE_MODE=inline la dependencia de Redis es opcional (`required:
+# false`): la API funciona sin el worker y procesa las exportaciones en línea.
 
 name: backend-pruebas
 
@@ -25,6 +29,21 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    networks:
+      - backend
+    # Sin `ports`: accesible solo desde la red interna.
+
+  redis:
+    image: redis:7.4.1-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     networks:
       - backend
     # Sin `ports`: accesible solo desde la red interna.
@@ -78,6 +97,9 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+        required: false # solo necesario cuando JOBS_QUEUE_MODE=redis
       # minio:  # descomenta junto con el servicio minio de arriba
       #   condition: service_healthy
     healthcheck:
@@ -88,6 +110,34 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    networks:
+      - backend
+
+  # Worker: MISMA imagen, otro comando. No publica puerto HTTP. En inline mode
+  # permanece ocioso (la API procesa los trabajos en el mismo proceso).
+  worker:
+    build:
+      context: .
+      target: development
+    command: ["npm", "run", "worker:dev"]
+    env_file: .env
+    environment:
+      # ConfigModule valida el entorno al importar AppModule (antes del main),
+      # por eso el flag debe venir de Compose y no asignarse en bootstrap().
+      WORKER_MODE: "true"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - files_data:/app/storage/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
     networks:
       - backend
 
@@ -130,6 +180,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   mailpit_data:
   minio_data: # reservado; se usa al activar el servicio minio
   files_data: # almacenamiento local de archivos cuando FILES_STORAGE=local

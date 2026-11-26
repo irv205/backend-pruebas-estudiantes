@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "7f1c9e64-3a2b-4f81-9d0e-2c6b5a8f4e11",
-    "name": "Backend de prácticas (Etapas 1-3)",
-    "description": "Collection del backend NestJS de prácticas (Etapas 1-3). Prefijo global /api/v1; health fuera del prefijo.\nEjecuta primero Auth › Login para poblar accessToken/refreshToken. Los IDs se autopueblan con los scripts de test.\nUsa x-space-id={{anonymousSpaceId}} para el sandbox anónimo y x-space-id={{spaceId}} para espacios de equipo.\nEtapa 3: la carpeta Cart & Orders calcula totales en servidor, exige Idempotency-Key y simula pagos; el escenario duplicateOrder del simulador fuerza una clave repetida en POST /orders.\nNo incluye secretos de producción: las credenciales del environment son solo del seed de desarrollo.",
+    "name": "Backend de prácticas (Etapas 1-4)",
+    "description": "Collection del backend NestJS de prácticas (Etapas 1-4). Prefijo global /api/v1; health fuera del prefijo.\nEjecuta primero Auth › Login para poblar accessToken/refreshToken. Los IDs se autopueblan con los scripts de test.\nEtapa 4: Realtime (documentación WS + salas de chat), Notifications, Jobs (exports CSV inline/Redis) y Web Auth (cookies HttpOnly + CSRF).\nEl socket se conecta en ws://localhost:3100/socket.io con auth.token={{accessToken}}; eventos: chat:send/message, resource:changed, notification:new, job:updated, events:replay.\nNo incluye secretos de producción: las credenciales del environment son solo del seed de desarrollo.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -3318,10 +3318,10 @@
               ],
               "query": []
             },
-            "description": "Activa los 10 escenarios implementados (Etapa 2). ATENCIÓN: afecta a las respuestas posteriores; ejecuta después la limpieza.",
+            "description": "Activa los 10 escenarios implementados (Etapa 2). ATENCIÓN: afecta a las respuestas posteriores; ejecuta después la limpieza. Incluye 12 escenarios (Etapa 4: failedAsyncJob).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"slowResponse\": true,\n  \"timeout\": true,\n  \"temporary503\": true,\n  \"sessionExpired\": true,\n  \"insufficientPermission\": true,\n  \"emptyList\": true,\n  \"largeVolume\": true,\n  \"concurrentEdit\": true,\n  \"rateLimit\": true,\n  \"invalidFile\": true,\n  \"duplicateOrder\": true\n}",
+              "raw": "{\n  \"slowResponse\": true,\n  \"timeout\": true,\n  \"temporary503\": true,\n  \"sessionExpired\": true,\n  \"insufficientPermission\": true,\n  \"emptyList\": true,\n  \"largeVolume\": true,\n  \"concurrentEdit\": true,\n  \"rateLimit\": true,\n  \"invalidFile\": true,\n  \"duplicateOrder\": true,\n  \"failedAsyncJob\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3369,10 +3369,10 @@
               ],
               "query": []
             },
-            "description": "Vuelve a dejar la API estable. Ejecutar siempre después de probar escenarios. Incluye duplicateOrder=false (Etapa 3).",
+            "description": "Vuelve a dejar la API estable. Ejecutar siempre después de probar escenarios. Incluye duplicateOrder=false (Etapa 3). Incluye failedAsyncJob=false (Etapa 4).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"slowResponse\": false,\n  \"timeout\": false,\n  \"temporary503\": false,\n  \"sessionExpired\": false,\n  \"insufficientPermission\": false,\n  \"emptyList\": false,\n  \"largeVolume\": false,\n  \"concurrentEdit\": false,\n  \"rateLimit\": false,\n  \"invalidFile\": false,\n  \"duplicateOrder\": false\n}",
+              "raw": "{\n  \"slowResponse\": false,\n  \"timeout\": false,\n  \"temporary503\": false,\n  \"sessionExpired\": false,\n  \"insufficientPermission\": false,\n  \"emptyList\": false,\n  \"largeVolume\": false,\n  \"concurrentEdit\": false,\n  \"rateLimit\": false,\n  \"invalidFile\": false,\n  \"duplicateOrder\": false,\n  \"failedAsyncJob\": false\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3555,10 +3555,10 @@
               ],
               "query": []
             },
-            "description": "Etapa 3: fuerza la clave duplicate-order-<spaceId> en POST /orders. Límite: solo POST /orders y una clave por espacio.",
+            "description": "Etapa 3: fuerza la clave duplicate-order-<spaceId> en POST /orders. Límite: solo POST /orders y una clave por espacio. Incluye 12 escenarios (Etapa 4: failedAsyncJob).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"duplicateOrder\": true\n}",
+              "raw": "{\n  \"duplicateOrder\": true,\n  \"failedAsyncJob\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3640,6 +3640,56 @@
                   "      pm.expect(res.json().data.id).to.equal(j.data.id);",
                   "      pm.expect(res.json().data.status).to.equal(j.data.status); done(); });",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activar failedAsyncJob (jobs fallidos)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/me/scenarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "me",
+                "scenarios"
+              ],
+              "query": []
+            },
+            "description": "Todos los export jobs del espacio terminan en FAILED. Desactívalo con la limpieza.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"failedAsyncJob\": true,\n  \"duplicateOrder\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
                 ]
               }
             }
@@ -4313,6 +4363,806 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Realtime",
+      "description": "Socket.IO en /socket.io con auth.token={{accessToken}}. Eventos: chat:send → chat:message; resource:changed; notification:new; job:updated; events:replay con { lastEventId, spaceId, limit }. Las salas se autorizan por espacio/miembro.",
+      "item": [
+        {
+          "name": "Crear sala de chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-space-id",
+                "value": "{{spaceId}}",
+                "description": "Opcional: espacio de equipo; omítelo para el personal."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chat/rooms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "rooms"
+              ],
+              "query": []
+            },
+            "description": "Requiere rol EDITOR/ADMINISTRADOR. Por defecto incluye a todos los miembros del espacio.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"General\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));",
+                  "const j = pm.response.json(); if (j.data && j.data.id) pm.collectionVariables.set('roomId', j.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar salas de chat",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "x-space-id",
+                "value": "{{spaceId}}",
+                "description": "Opcional: espacio de equipo; omítelo para el personal."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chat/rooms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "rooms"
+              ],
+              "query": []
+            },
+            "description": "El administrador ve todas; los demás solo las que integran."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Historial de mensajes de la sala",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "x-space-id",
+                "value": "{{spaceId}}",
+                "description": "Opcional: espacio de equipo; omítelo para el personal."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chat/rooms/{{roomId}}/messages?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "rooms",
+                "{{roomId}}",
+                "messages"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Historial ordenado por sequence."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ejemplo cliente WS (referencia)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hostUrl}}/docs",
+              "host": [
+                "{{hostUrl}}"
+              ],
+              "path": [
+                "docs"
+              ],
+              "query": []
+            },
+            "description": "El socket NO se prueba desde Postman REST. Ejemplo JS:\nconst s = io(\"http://localhost:3100\",{auth:{token:accessToken}});\ns.on(\"connection:ready\",()=>s.emit(\"chat:send\",{roomId,content:\"hola\"}));\ns.on(\"chat:message\",console.log);\ns.on(\"events:replay\",console.log);\ns.emit(\"events:replay\",{lastEventId:0,limit:50});"
+          },
+          "event": []
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "description": "Bandeja por usuario y espacio. Las notificaciones se generan al aprobar/cancelar pedidos y al completar/fallar export jobs.",
+      "item": [
+        {
+          "name": "Listar notificaciones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=1&limit=20&unreadOnly=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "unreadOnly",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Filtro unreadOnly=true para solo no leídas."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json(); if (j.data && j.data[0]) pm.collectionVariables.set('notificationId', j.data[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Contar no leídas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "unread-count"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle de notificación",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{notificationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "{{notificationId}}"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Marcar notificación como leída",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{notificationId}}/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "{{notificationId}}",
+                "read"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Marcar todas como leídas",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/read-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "read-all"
+              ],
+              "query": []
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Jobs",
+      "description": "Exportaciones asíncronas. Con JOBS_QUEUE_MODE=redis la API responde PENDING y el worker procesa; con inline responde COMPLETED. PostgreSQL guarda el estado.",
+      "item": [
+        {
+          "name": "Crear export de productos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/jobs/exports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "jobs",
+                "exports"
+              ],
+              "query": []
+            },
+            "description": "kind: PRODUCTS_CSV | NOTES_CSV. Filtros: search, categoryId (productos), isArchived (notas).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"PRODUCTS_CSV\",\n  \"filters\": {\n    \"search\": \"\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));",
+                  "const j = pm.response.json(); if (j.data && j.data.id) pm.collectionVariables.set('jobId', j.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear export de notas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/jobs/exports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "jobs",
+                "exports"
+              ],
+              "query": []
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"NOTES_CSV\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));",
+                  "const j = pm.response.json(); if (j.data && j.data.id) pm.collectionVariables.set('jobId', j.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar trabajos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/jobs/exports?page=1&limit=20&status=COMPLETED",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "jobs",
+                "exports"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "COMPLETED"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar estado del trabajo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/jobs/exports/{{jobId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "jobs",
+                "exports",
+                "{{jobId}}"
+              ],
+              "query": []
+            },
+            "description": "Estados: PENDING, PROCESSING, COMPLETED, FAILED. NULL en error si no falló."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Descargar CSV terminado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/jobs/exports/{{jobId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "jobs",
+                "exports",
+                "{{jobId}}",
+                "download"
+              ],
+              "query": []
+            },
+            "description": "Solo si COMPLETED; si no responde 409 EXPORT_NOT_READY."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('CSV', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/csv'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Web Auth (cookies/CSRF)",
+      "description": "Flujo navegador: login web → cookies HttpOnly + csrfToken; GET /csrf; X-CSRF-Token en mutaciones con cookie. Las rutas Bearer siguen igual.",
+      "item": [
+        {
+          "name": "Login web (Set-Cookie)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/web/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "web",
+                "login"
+              ],
+              "query": []
+            },
+            "description": "Devuelve accessToken en el body y guarda refresh_token/csrf_token en cookies HttpOnly.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json(); pm.collectionVariables.set('accessToken', j.data.tokens.accessToken);",
+                  "const cookies = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value);",
+                  "const pick = n => { const c = cookies.find(v => v.startsWith(n + '=')); return c ? c.split(';')[0].slice(n.length + 1) : null; };",
+                  "pm.collectionVariables.set('webRefreshToken', pick('refresh_token'));",
+                  "pm.collectionVariables.set('csrfToken', pick('csrf_token') || j.data.csrfToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener CSRF (cookie + body)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/csrf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "csrf"
+              ],
+              "query": []
+            },
+            "description": "Double-submit: el token vuelve en el body y en la cookie csrf_token."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('csrfToken', pm.response.json().data.csrfToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renovar sesión web (cookie + CSRF)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "refresh_token={{webRefreshToken}}; csrf_token={{csrfToken}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/web/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "web",
+                "refresh"
+              ],
+              "query": []
+            },
+            "description": "Rota el refresh token y actualiza la cookie; sin X-CSRF-Token responde 403."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('accessToken', pm.response.json().data.tokens.accessToken);",
+                  "const cookies = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value);",
+                  "const c = cookies.find(v => v.startsWith('refresh_token=')); if (c) pm.collectionVariables.set('webRefreshToken', c.split(';')[0].slice('refresh_token='.length));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout web (revoca y limpia cookies)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "refresh_token={{webRefreshToken}}; csrf_token={{csrfToken}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/web/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "web",
+                "logout"
+              ],
+              "query": []
+            },
+            "description": "204 y cookies con Max-Age=0."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -4471,6 +5321,36 @@
       "value": "",
       "type": "string",
       "description": "Clave de idempotencia de POST /orders; se genera con {{$guid}} y se reutiliza en el reintento."
+    },
+    {
+      "key": "notificationId",
+      "value": "",
+      "type": "string",
+      "description": "Poblado por la carpeta Notifications."
+    },
+    {
+      "key": "jobId",
+      "value": "",
+      "type": "string",
+      "description": "Poblado por la carpeta Jobs."
+    },
+    {
+      "key": "roomId",
+      "value": "",
+      "type": "string",
+      "description": "Poblado por la carpeta Realtime."
+    },
+    {
+      "key": "csrfToken",
+      "value": "",
+      "type": "string",
+      "description": "Poblado por la carpeta Web Auth."
+    },
+    {
+      "key": "webRefreshToken",
+      "value": "",
+      "type": "string",
+      "description": "Poblado por la carpeta Web Auth."
     }
   ]
 }

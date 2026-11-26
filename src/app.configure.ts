@@ -25,9 +25,19 @@ export function configureApp(app: INestApplication): void {
     .map((value) => value.trim())
     .filter(Boolean);
   app.enableCors({
+    // `credentials: true` es obligatorio para el flujo web con cookies.
+    // Con CORS_ORIGIN=* se refleja el origen de la petición (no se envía '*').
     origin: origins.includes('*') ? true : origins,
+    credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-space-id', 'x-request-id', 'Idempotency-Key'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-space-id',
+      'x-request-id',
+      'Idempotency-Key',
+      'X-CSRF-Token',
+    ],
   });
 
   const swagger = new DocumentBuilder()
@@ -37,12 +47,15 @@ export function configureApp(app: INestApplication): void {
         'anónimo en `/public/*` o para seleccionar un espacio de equipo; usa ' +
         '`Authorization: Bearer <accessToken>` para el espacio personal. Incluye categorías, ' +
         'tareas, roles, archivos (S3/MinIO o local), carrito, pedidos con stock transaccional, ' +
-        'pagos simulados, idempotencia y simulador de escenarios por espacio.',
+        'pagos simulados, idempotencia, simulador de escenarios, notificaciones, chat/WebSocket, ' +
+      'exportaciones asíncronas (Redis/BullMQ con fallback inline) y login web con cookies HttpOnly + CSRF.',
     )
-    .setVersion('3.0.0')
+    .setVersion('4.0.0')
     .addBearerAuth()
     .addApiKey({ type: 'apiKey', name: 'x-space-id', in: 'header' }, 'space-id')
     .addApiKey({ type: 'apiKey', name: 'Idempotency-Key', in: 'header' }, 'idempotency-key')
+    .addApiKey({ type: 'apiKey', name: 'X-CSRF-Token', in: 'header' }, 'csrf-token')
+    .addCookieAuth('refresh_token')
     .build();
   SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swagger));
 }
