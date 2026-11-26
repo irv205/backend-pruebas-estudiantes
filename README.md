@@ -605,6 +605,52 @@ docker compose exec app npm run prisma:generate     # tras editar schema.prisma
 
 La migración `20241125000000_stage2` recrea el enum `MembershipRole` (`LECTOR`, `EDITOR`, `ADMINISTRADOR`), añade `isActive`/`version` a `Category` y crea `Task`, `Subtask`, `FileObject` y `SpaceScenarioConfig`. La migración `20241126000000_stage3` añade los enums `OrderStatus`/`PaymentOutcome`, la columna `duplicateOrder` del simulador y las tablas `Cart`, `CartItem`, `Order`, `OrderItem`, `PaymentSimulation` e `IdempotencyRecord`. La migración `20241127000000_stage4` añade los enums `NotificationType`, `ExportKind` y `ExportStatus`, la columna `failedAsyncJob` de `SpaceScenarioConfig` y las tablas `Notification`, `ChatRoom`, `ChatMember`, `ChatMessage`, `RealtimeEvent` y `ExportJob`. No se reescriben las migraciones anteriores.
 
+## URL pública para compartir con estudiantes (Cloudflare Tunnel)
+
+Para que tus estudiantes accedan al backend sin desplegarlo a un hosting, puedes exponerlo con un **quick tunnel** de Cloudflare (`cloudflared`). La URL generada es temporal (`https://xxxx.trycloudflare.com`) y cambia en cada ejecución.
+
+### Requisito: instalar `cloudflared`
+
+- **macOS (Homebrew):** `brew install cloudflare/cloudflare/cloudflared`
+- Otras plataformas: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+Verifica con `cloudflared --version`. Si no está instalado, los scripts lo detectan y muestran estas instrucciones sin dejar el backend colgado.
+
+### Comandos
+
+```bash
+# Arranca el backend y pregunta si quieres la URL pública (interactivo)
+npm start
+# Equivalente explícito sin pregunta:
+npm run start:public        # o: npm run start:tunnel
+# Reiniciar (libera el puerto y vuelve a arrancar con el flujo interactivo)
+npm run restart
+```
+
+El flujo:
+1. Compila (`npm run build`) si falta `dist/main.js`.
+2. Arranca el backend (`node dist/main.js`) en `PORT` (default 3000).
+3. Espera a que `/health/ready` responda 200.
+4. Pregunta: `¿Quieres generar la URL pública (Cloudflare Tunnel) para compartir con tus estudiantes? [y/N]`.
+5. Si respondes `y`: lanza `cloudflared tunnel --url http://127.0.0.1:$PORT`, extrae la URL `https://*.trycloudflare.com` y la muestra destacada junto con Swagger/API.
+6. `Ctrl+C` termina limpiamente el túnel y el backend.
+
+Variables de entorno útiles:
+- `PUBLIC_URL_AUTO=1` (o `CLOUDFLARE_TUNNEL_AUTO=1`): genera el túnel sin preguntar.
+- `SKIP_PUBLIC_URL=1` (o `NO_PUBLIC_URL=1`): no genera túnel ni pregunta.
+- `PORT`: puerto del backend (default 3000).
+- `FORCE_BUILD=1`: fuerza la compilación.
+- `SKIP_BUILD=1`: omite la compilación.
+
+### Advertencias
+
+- La URL es **temporal** y cambia en cada ejecución; no es estable para compartir "para siempre".
+- El quick tunnel **no tiene autenticación**: cualquiera con la URL accede. Úsalo solo para práctica/demo con datos de ejemplo.
+- **No apto para producción** ni para datos sensibles. Cloudflare puede limitar o cerrar túneles sin aviso.
+- El backend corre en tu máquina: si apagas la computadora o cierras la terminal, la URL deja de funcionar.
+- En entornos no interactivos (CI/Docker/sin TTY) el túnel se omite automáticamente, salvo que fuerces con `PUBLIC_URL_AUTO=1`.
+- Si usas Docker Compose, el túnel debe apuntar al puerto **publicado en el host** (`APP_HOST_PORT`, por defecto 3100): `cloudflared tunnel --url http://127.0.0.1:3100`. El flujo automático de `npm start` es para el modo directo (Node en el host).
+
 ## Solución de problemas
 
 | Síntoma | Causa probable | Qué hacer |
