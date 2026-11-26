@@ -2,7 +2,7 @@
 
 API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL**, ejecutada con **Docker Compose**. La Etapa 2 añade **categorías, archivos, tareas, roles de equipo y simulador de escenarios**; la Etapa 3 añade **carrito, pedidos con stock transaccional, pagos simulados, idempotencia persistida y el escenario `duplicateOrder`**.
 
-> **Persistencia: código vs datos.** El código fuente vive en este repositorio Git (`.gitignore` excluye `node_modules`, `dist`, `.env` y backups; `.gitattributes` fuerza `eol=lf` en los scripts). Docker guarda la **ejecución** y los **datos**: PostgreSQL, Mailpit y el almacenamiento de archivos usan **volúmenes nombrados** (`postgres_data`, `mailpit_data`, `files_data` y `minio_data`, reservado). Borrar contenedores no borra volúmenes.
+> **Persistencia: código vs datos.** El código fuente vive en este repositorio Git (`.gitignore` excluye `node_modules`, `dist`, `.env` y backups; `.gitattributes` fuerza `eol=lf` en `*.sh`/`*.bash` y `eol=crlf` en `*.ps1`/`*.cmd`). Docker guarda la **ejecución** y los **datos**: PostgreSQL, Mailpit y el almacenamiento de archivos usan **volúmenes nombrados** (`postgres_data`, `mailpit_data`, `files_data` y `minio_data`, reservado). Borrar contenedores no borra volúmenes.
 
 ## Guías
 
@@ -67,6 +67,15 @@ Sustituye `<URL>` y `<REPO>` por tu repositorio real (son marcadores de posició
 
 > El instalador **no sube nada a GitHub** (no configura remote ni hace push) y **no instala dependencias del sistema sin confirmación**; `--yes`/`-Yes` tampoco autoriza esa instalación. En Windows el arranque usa `scripts/start.ps1` (PowerShell puro): espera a `migrate` con `docker inspect` y comprueba `/health/ready` con `Invoke-WebRequest`, sin `curl` ni `bash`. La guía manual detallada sigue a continuación.
 
+### Ciclo de vida Windows (resumen)
+
+Sin Git Bash ni WSL: cada acción tiene su script PowerShell, su wrapper `.cmd` y su script npm.
+
+- **Instalar:** `.\install.ps1` / `install.cmd` / `npm run project:install:win`
+- **Arrancar:** `.\start.ps1` / `start.cmd` / `npm run project:start:win`
+- **Detener:** `.\stop.ps1` / `stop.cmd` / `npm run project:stop:win`
+- **Reiniciar sin seed:** `.\restart.ps1 -NoSeed` / `restart.cmd -NoSeed` / `npm run project:restart:win -- -NoSeed`
+
 ### 1. Requisitos previos
 
 | Requisito | Windows / macOS | Linux | Cómo comprobarlo |
@@ -91,7 +100,7 @@ Sustituye `<TU-USUARIO>` y `<REPO>` por tu usuario y nombre de repositorio reale
 ### 3. Configurar el entorno
 
 ```bash
-cp .env.example .env                 # macOS / Linux / Git Bash / WSL
+cp .env.example .env                 # macOS / Linux
 ```
 
 ```powershell

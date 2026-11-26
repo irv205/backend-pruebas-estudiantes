@@ -28,11 +28,18 @@ No modifiques el código del backend: aquí el objetivo es **consumir** la API, 
 ### Arranque rápido
 
 ```bash
-cp .env.example .env       # revisa APP_HOST_PORT=3100; NUNCA versiones .env
+cp .env.example .env       # macOS / Linux: revisa APP_HOST_PORT=3100; NUNCA versiones .env
 ./start.sh                 # equivalente: npm run project:start
 ```
 
-Espera a que `start.sh` termine: ejecuta migraciones, espera `GET /health/ready` y aplica el seed idempotente. Para apagar: `./stop.sh`. Para reiniciar: `./restart.sh` (acepta `--no-seed` para no resembrar).
+```powershell
+Copy-Item .env.example .env   # Windows: revisa APP_HOST_PORT=3100; NUNCA versiones .env
+.\start.ps1                   # equivalente: .\start.cmd | npm run project:start:win
+```
+
+Espera a que `start.sh` / `start.ps1` termine: ejecuta migraciones, espera `GET /health/ready` y aplica el seed idempotente. Para apagar: `./stop.sh` / `.\stop.ps1` / `.\stop.cmd` / `npm run project:stop:win`. Para reiniciar: `./restart.sh` / `.\restart.ps1` / `.\restart.cmd` / `npm run project:restart:win` (acepta `--no-seed` / `-NoSeed` para no resembrar).
+
+> Los ejemplos con `curl` de esta guía funcionan tal cual en bash y en PowerShell 7; en Windows también puedes usar `Invoke-WebRequest`.
 
 **URLs base de este entorno:**
 
@@ -134,7 +141,7 @@ Después del Nivel 6 encontrarás el **proyecto final sugerido**. **Total: 24 de
 **Pasos**
 
 1. Comprueba que `.env` existe y que `APP_HOST_PORT=3100`.
-2. Ejecuta `./start.sh` y espera a que imprima las URLs reales (incluye la espera de migraciones y health).
+2. Ejecuta `./start.sh` (macOS/Linux) o `.\start.ps1` / `.\start.cmd` / `npm run project:start:win` (Windows) y espera a que imprima las URLs reales (incluye la espera de migraciones y health).
 3. Comprueba liveness y readiness:
    ```bash
    curl -i http://localhost:3100/health/live
