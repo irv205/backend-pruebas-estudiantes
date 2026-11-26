@@ -14,6 +14,24 @@ log()  { printf '[start] %s\n' "$*"; }
 warn() { printf '[start] AVISO: %s\n' "$*" >&2; }
 err()  { printf '[start] ERROR: %s\n' "$*" >&2; }
 
+is_true() {
+  case "$1" in
+    1|true|TRUE|True|yes|YES|Yes|si|SI|Si|sí|Sí|SÍ) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Lee valor del entorno del shell; si no existe, del .env local (sin sourcear).
+read_tunnel_var() {
+  local key="$1" value=""
+  value="$(printenv "$key" 2>/dev/null || true)"
+  if [[ -z "$value" && -f "$ENV_FILE" ]]; then
+    value="$(sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*\\([^[:space:]#]*\\).*/\\1/p" \
+      "$ENV_FILE" | tail -n 1 | tr -d '\r')"
+  fi
+  printf '%s' "$value"
+}
+
 # Lee una sola variable sin "sourcear" el .env (SMTP_FROM contiene espacios).
 read_host_port() {
   local port=""
@@ -139,8 +157,79 @@ else
   }
 fi
 
+# Ofrecer la URL pública reutilizando el script existente en modo --tunnel-only:
+# no compila, no levanta otro backend y no repite la pregunta.
+TUNNEL_SCRIPT="$PROJECT_ROOT/scripts/start-with-public-url.mjs"
+
+offer_public_url() {
+  local manual_cmd="cloudflared tunnel --url http://127.0.0.1:${APP_HOST_PORT}"
+  local var value answer auto=0
+
+  if [[ ! -f "$TUNNEL_SCRIPT" ]]; then
+    warn "No se encontró scripts/start-with-public-url.mjs; se omite la URL pública."
+    return 0
+  fi
+
+  # Omisión explícita (CI o preferencia del profesor). Se respeta también si
+  # la variable viene en .env.
+  for var in SKIP_PUBLIC_URL NO_PUBLIC_URL SKIP_TUNNEL_PROMPT SKIP_PUBLIC_URL_PROMPT; do
+    value="$(read_tunnel_var "$var")"
+    if is_true "$value"; then
+      log "Túnel omitido ($var=$value). Para abrirlo después: $manual_cmd"
+      return 0
+    fi
+  done
+  value="$(read_tunnel_var PUBLIC_URL)"
+  if [[ "$value" == "0" ]]; then
+    log "Túnel omitido (PUBLIC_URL=0). Para abrirlo después: $manual_cmd"
+    return 0
+  fi
+
+  for var in PUBLIC_URL_AUTO CLOUDFLARE_TUNNEL_AUTO START_WITH_PUBLIC_URL; do
+    if is_true "$(read_tunnel_var "$var")"; then auto=1; fi
+  done
+
+  # Nunca bloquear CI ni ejecuciones sin terminal.
+  if (( auto == 0 )) && [[ ! -t 0 || ! -t 1 ]]; then
+    log "Entorno no interactivo (sin TTY): se omite el túnel."
+    log "Para abrirlo después: $manual_cmd"
+    return 0
+  fi
+
+  # No se instala cloudflared automáticamente.
+  if ! command -v cloudflared >/dev/null 2>&1; then
+    warn "cloudflared no está en el PATH; no se puede crear el túnel ahora."
+    warn "Instálalo en macOS con: brew install cloudflare/cloudflare/cloudflared"
+    warn "Otras opciones: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+    warn "El backend sigue disponible en local. Cuando lo instales: $manual_cmd"
+    return 0
+  fi
+
+  answer=""
+  if (( auto == 0 )); then
+    printf '\n[start] ¿Quieres generar la URL pública con Cloudflare Tunnel para compartirla con tus estudiantes? [y/N] '
+    IFS= read -r answer || answer=""
+    if ! is_true "$answer" && [[ "$answer" != [yY] && "$answer" != [yY][eE][sS] ]]; then
+      log "Túnel no solicitado. Para abrirlo después: $manual_cmd"
+      return 0
+    fi
+  else
+    log "Túnel automático por variable de entorno."
+  fi
+
+  log "Abriendo el túnel hacia http://127.0.0.1:${APP_HOST_PORT} (Ctrl+C para cerrarlo)..."
+  if PORT="$APP_HOST_PORT" TUNNEL_ONLY=1 node "$TUNNEL_SCRIPT" --tunnel-only; then
+    log "Túnel cerrado. El backend sigue activo en http://localhost:${APP_HOST_PORT}/api/v1"
+  else
+    warn "El túnel terminó con error; el backend sigue activo en http://localhost:${APP_HOST_PORT}/api/v1"
+  fi
+  return 0
+}
+
 printf '\n[start] Proyecto listo.\n'
 printf '  API:     http://localhost:%s/api/v1\n' "$APP_HOST_PORT"
 printf '  Swagger: http://localhost:%s/docs\n' "$APP_HOST_PORT"
 printf '  Health:  http://localhost:%s/health/ready (y /health/live)\n' "$APP_HOST_PORT"
 printf '  Mailpit: http://127.0.0.1:8025\n'
+
+offer_public_url

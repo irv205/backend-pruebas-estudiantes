@@ -107,7 +107,7 @@ Para estudiantes, vuelve a las variables públicas del apartado [Importar](#impo
 
 > **Solo anfitrión/profesor:** los estudiantes no ejecutan estos comandos; solo reciben la URL impresa y actualizan sus variables de Postman. Ver [Flujo del estudiante](#flujo-del-estudiante-sin-instalación).
 
-El script `scripts/start-with-public-url.mjs` crea un **quick tunnel anónimo** con `cloudflared tunnel --url http://127.0.0.1:$PORT` y muestra una URL temporal `https://xxxx.trycloudflare.com` (cambia en cada ejecución; no usa tokens ni config de Cloudflare). Si arrancas con `./start.sh`, abre el túnel a mano apuntando a `APP_HOST_PORT`: `cloudflared tunnel --url http://127.0.0.1:3100`.
+El script `scripts/start-with-public-url.mjs` crea un **quick tunnel anónimo** con `cloudflared tunnel --url http://127.0.0.1:$PORT` y muestra una URL temporal `https://xxxx.trycloudflare.com` (cambia en cada ejecución; no usa tokens ni config de Cloudflare). Si arrancas con `./start.sh`, al terminar el arranque te pregunta si quieres abrir el túnel y lo apunta a `APP_HOST_PORT`. Si respondes `N` (o no hay terminal interactiva), ábrelo a mano: `cloudflared tunnel --url http://127.0.0.1:3100` (3100 = `APP_HOST_PORT` de ejemplo).
 
 Con la URL impresa en la terminal:
 

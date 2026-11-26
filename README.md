@@ -19,7 +19,7 @@ Los estudiantes **no instalan ni arrancan nada**: el backend corre en tu máquin
 3. Abren el portal y Swagger en `https://<TUNNEL>/portal` y `https://<TUNNEL>/docs`. La UI de Mailpit **no se expone**: cada estudiante ve solo sus correos en el portal (`GET /api/v1/mail/me`).
 4. Hacen el [Nivel 0 del índice de challenges](docs/coding-challenges.md#nivel-0--conexión-a-la-api-pública) y continúan en orden.
 
-> Si el túnel se reinicia, comparte la URL nueva: las anteriores dejan de funcionar. Los comandos de esta guía siguen siendo solo para el anfitrión.
+> Si el túnel se reinicia, comparte la URL nueva: las anteriores dejan de funcionar. El profesor puede abrirlo al terminar `./start.sh` (la terminal le pregunta) o manualmente; los comandos de esta guía siguen siendo solo para el anfitrión.
 
 ## Decisiones mantenidas
 
@@ -110,6 +110,7 @@ Forma recomendada (espera a migraciones, healthcheck y seed idempotente automát
 # o: npm run project:start
 ```
 
+- Al terminar correctamente el arranque (después de health y seed), si la terminal es interactiva, `start.sh` ofrece abrir el túnel: `¿Quieres generar la URL pública con Cloudflare Tunnel para compartirla con tus estudiantes? [y/N]`. Responde `y` y se imprimirá la URL temporal; con `N` o Enter sigues en local y se te indica el comando manual. Ver [Exponer la API con Cloudflare Tunnel](#exponer-la-api-con-cloudflare-tunnel).
 - Los scripts `.sh` funcionan tal cual en macOS/Linux (`.gitattributes` garantiza finales de línea LF).
 - Alternativa manual: `docker compose up -d --build`, esperar a `migrate` con `docker compose logs -f migrate` y ejecutar `docker compose exec -T app npm run prisma:seed`.
 
@@ -217,7 +218,7 @@ Los scripts canónicos están en `scripts/`; en la raíz hay wrappers bash para 
 | Ver logs | `docker compose logs -f app` | `docker compose logs --tail=100 migrate` (migraciones), `worker` (exports) o `redis` (cola) |
 | Ver estado | `docker compose ps` | Incluye `migrate` (`Exited(0)` = OK), `redis` (*healthy*) y `worker` (*up*) |
 
-`start.sh` localiza la raíz del proyecto desde su ubicación, lee `APP_HOST_PORT` de `.env` (default `3000`), avisa si el puerto está ocupado por un contenedor ajeno **sin detenerlo**, ejecuta `docker compose up -d --build`, espera a que `migrate` termine con código 0 y a que `GET /health/ready` responda 200 (60 s cada espera), y aplica el seed idempotente. La opción `--no-seed` omite el seed. Al terminar imprime las URLs reales con el puerto configurado.
+`start.sh` localiza la raíz del proyecto desde su ubicación, lee `APP_HOST_PORT` de `.env` (default `3000`), avisa si el puerto está ocupado por un contenedor ajeno **sin detenerlo**, ejecuta `docker compose up -d --build`, espera a que `migrate` termine con código 0 y a que `GET /health/ready` responda 200 (60 s cada espera), y aplica el seed idempotente. La opción `--no-seed` omite el seed. Al terminar imprime las URLs reales con el puerto configurado y, en terminal interactiva, pregunta si quieres abrir el túnel público (se omite sin TTY o con `SKIP_TUNNEL_PROMPT=1`/`SKIP_PUBLIC_URL=1`). Si aceptas, reutiliza `scripts/start-with-public-url.mjs` en modo `--tunnel-only` con `PORT=$APP_HOST_PORT`: no recompila, no levanta otro backend y no repite la pregunta. `Ctrl+C` cierra el túnel sin detener Docker.
 
 `stop.sh` ejecuta `docker compose down` **sin `-v`**: los volúmenes `postgres_data`, `redis_data`, `mailpit_data` y `files_data` se conservan, así como `minio_data` (reservado). No acepta opciones que borren datos (p. ej. `-v` o `--volumes`). `restart.sh` encadena el apagado y el arranque, reenviando argumentos como `--no-seed`.
 
@@ -574,13 +575,13 @@ La migración `20241125000000_stage2` recrea el enum `MembershipRole` (`LECTOR`,
 
 Cloudflared abre un **túnel saliente**: el proceso corre en tu máquina y conecta con Cloudflare; las peticiones a `https://xxxx.trycloudflare.com` se reenvían a `http://127.0.0.1:<puerto>` de tu equipo. **No abres puertos entrantes**, no necesitas IP pública y solo se publica HTTP hacia la API: PostgreSQL, Redis y Mailpit siguen siendo internos. Todo se guarda en tu máquina; Cloudflare únicamente transporta peticiones.
 
-> **Lo que hace realmente el código:** `scripts/start-with-public-url.mjs` lanza un **quick tunnel anónimo** con `cloudflared tunnel --url http://127.0.0.1:$PORT`. No hay túnel nombrado, ni `config.yml`, ni token de Cloudflare. La URL `https://*.trycloudflare.com` es aleatoria, se lee de la salida del proceso y cambia en cada ejecución.
+> **Lo que hace realmente el código:** `scripts/start-with-public-url.mjs` lanza un **quick tunnel anónimo** con `cloudflared tunnel --url http://127.0.0.1:$PORT`. No hay túnel nombrado, ni `config.yml`, ni token de Cloudflare. La URL `https://*.trycloudflare.com` es aleatoria, se lee de la salida del proceso y cambia en cada ejecución. `./start.sh` ofrece este mismo túnel al final del arranque, invocando el script con `--tunnel-only` y `PORT=$APP_HOST_PORT` para apuntar al puerto real de la API.
 
 ### Requisitos
 
 - `cloudflared` instalado. En macOS (Homebrew): `brew install cloudflare/cloudflare/cloudflared`. En otras plataformas: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/. Verifica con `cloudflared --version`.
 - La aplicación corriendo. Dos modos (elige **uno**, no los mezcles):
-  - **Docker (recomendado, ya usado en esta guía):** `./start.sh` y túnel manual hacia `http://127.0.0.1:$APP_HOST_PORT` (3100 por defecto).
+  - **Docker (recomendado, ya usado en esta guía):** `./start.sh` y, cuando pregunte al final, acepta el túnel hacia `http://127.0.0.1:$APP_HOST_PORT` (3100 por defecto). Si lo rechazas, ábrelo después con el comando manual de abajo.
   - **Directo (script Node):** `npm start` / `npm run start:public`, que usa `PORT` (default 3000, **no** `APP_HOST_PORT`).
 - Node 20.18.1 y npm solo para el modo directo; `curl` para comprobar la API.
 
@@ -596,12 +597,19 @@ npm run start:public         # o: npm run start:tunnel
 # Reinicia liberando el puerto y vuelve al flujo interactivo:
 npm run restart              # = node scripts/start-with-public-url.mjs --restart
 
-# Modo Docker: arranca la app y abre el túnel en OTRA terminal
+# Modo Docker (recomendado): arranca la app y pregunta si quieres el túnel
 ./start.sh
+#   ... migrate + health + seed ...
+#   ¿Quieres generar la URL pública con Cloudflare Tunnel para compartirla con tus estudiantes? [y/N]
+#   y -> imprime la URL temporal; N/Enter -> sigue solo en local
+
+# Si respondiste N (o no hay TTY), ábrelo después en una terminal:
 cloudflared tunnel --url http://127.0.0.1:3100   # 3100 = APP_HOST_PORT; usa el tuyo
 ```
 
-Flujo del script: compila si falta `dist/main.js` → arranca `node dist/main.js` en `PORT` → espera `/health/ready` → pregunta `¿Quieres generar la URL pública (Cloudflare Tunnel) para compartir con tus estudiantes? [y/N]` → si respondes `y`, lanza `cloudflared tunnel --url http://127.0.0.1:$PORT`, extrae la URL y la imprime destacada con Swagger/API/Health. `Ctrl+C` cierra túnel y backend.
+Flujo del script en modo directo: compila si falta `dist/main.js` → arranca `node dist/main.js` en `PORT` → espera `/health/ready` → pregunta `¿Quieres generar la URL pública (Cloudflare Tunnel) para compartir con tus estudiantes? [y/N]` → si respondes `y`, lanza `cloudflared tunnel --url http://127.0.0.1:$PORT`, extrae la URL y la imprime destacada con Swagger/API/Health. `Ctrl+C` cierra túnel y backend.
+
+Flujo en modo Docker: `./start.sh` hace build/up, espera migrate/health y aplica el seed **antes** de preguntar; si aceptas, llama a `PORT=$APP_HOST_PORT node scripts/start-with-public-url.mjs --tunnel-only`. Ese modo solo comprueba `/health/ready` y abre el túnel: no compila, no inicia un segundo backend (evita `EADDRINUSE`) y no vuelve a preguntar. `Ctrl+C` cierra el túnel; los contenedores siguen activos.
 
 Copia la URL impresa (`https://xxxx.trycloudflare.com`) y úsala en los tres sitios siguientes.
 
@@ -627,15 +635,18 @@ Los datos siguen en los volúmenes Docker de tu máquina (`postgres_data`, `mail
 - No compartas correos reales, contraseñas ni tokens en capturas o logs, y no subas `.env`, tokens ni config de cloudflared a Git (`.env` ya está gitignored).
 - **No apto para producción** ni datos sensibles. Cloudflare puede limitar o cerrar túneles sin aviso.
 - El backend corre en tu máquina: si la apagas o cierras la terminal, la URL deja de funcionar.
-- En entornos sin TTY (CI/Docker) el túnel se omite, salvo que se fuerce con `PUBLIC_URL_AUTO=1`.
+- En entornos sin TTY (CI/Docker) la pregunta se omite y `start.sh` imprime el comando manual. Para forzar el túnel sin pregunta usa `PUBLIC_URL_AUTO=1`.
+- No se instala `cloudflared` automáticamente: si falta, se muestran las instrucciones de instalación y el arranque termina sin error.
 
 ### Variables de entorno del script
 
 | Variable | Efecto real |
 |---|---|
-| `PUBLIC_URL_AUTO=1` / `CLOUDFLARE_TUNNEL_AUTO=1` / `START_WITH_PUBLIC_URL=1` | Genera el túnel sin preguntar. |
+| `PUBLIC_URL_AUTO=1` / `CLOUDFLARE_TUNNEL_AUTO=1` / `START_WITH_PUBLIC_URL=1` | Genera el túnel sin preguntar (también en `./start.sh`). |
 | `SKIP_PUBLIC_URL=1` / `NO_PUBLIC_URL=1` / `PUBLIC_URL=0` | No crea túnel ni pregunta. |
+| `SKIP_TUNNEL_PROMPT=1` / `SKIP_PUBLIC_URL_PROMPT=1` | Nueva: omite solo la pregunta de `./start.sh` (útil en CI); imprime el comando manual. |
 | `PORT` | Puerto del backend en modo directo (default 3000). Distinto de `APP_HOST_PORT`. |
+| `TUNNEL_ONLY=1` / `--tunnel-only` | Modo interno usado por `./start.sh`: no compila ni arranca backend, solo abre el túnel en `PORT`. |
 | `READY_TIMEOUT_MS` | Espera máxima a `/health/ready` en el script (default 60000). |
 | `FORCE_BUILD=1` / `SKIP_BUILD=1` | Fuerza u omite `npm run build`. |
 
@@ -652,6 +663,7 @@ No hay variables de token ni de nombre de túnel: el quick tunnel no las usa. Pl
 | `/health/ready` no devuelve 200 | Primera vez que arranca o la app cayó | Espera unos segundos; revisa `docker compose logs --tail=100 app` y `docker compose ps`. El healthcheck comprueba PostgreSQL, **no** Redis. Para verificar Redis: `docker compose exec redis redis-cli ping` (debe devolver `PONG`) o `docker compose ps redis`. |
 | `redis` no está *healthy* o el arranque espera a Redis | Imagen caída o `REDIS_URL` mal escrita (debe ser `redis://redis:6379` dentro de Compose) | Revisa `docker compose logs --tail=100 redis` y `docker compose config`. Si solo quieres probar la API sin cola, pon `JOBS_QUEUE_MODE=inline` en `.env`: `depends_on` de Redis es `required: false` y la app arranca igual. |
 | Mensaje `$'\r': command not found` al ejecutar `./start.sh` | Finales de línea CRLF en el checkout | El repo incluye `.gitattributes` con `eol=lf` para `*.sh`; vuelve a clonar o normaliza con `git add --renormalize .`. |
+| No aparece la pregunta del túnel al terminar `./start.sh` | Terminal sin TTY, variable de omisión (`SKIP_TUNNEL_PROMPT`/`SKIP_PUBLIC_URL`) o `cloudflared` ausente | Usa una terminal interactiva, revisa esas variables y `command -v cloudflared`. Para abrirlo a mano: `cloudflared tunnel --url http://127.0.0.1:$APP_HOST_PORT`. |
 | No aparece MinIO / errores al activar `FILES_STORAGE=s3` | El servicio está **comentado** a propósito (imagen no verificable desde el entorno original) | No es un fallo: con `FILES_STORAGE=local` los archivos van al volumen `files_data` y las pruebas usan un stub. Solo descomenta MinIO si verificas el tag y configuras `MINIO_ROOT_*` y `S3_*`. |
 | Los export jobs se quedan en `PENDING` | Modo `redis` sin worker, Redis caído o `WORKER_MODE` no fijado | `docker compose ps` y `docker compose logs --tail=100 worker`; debe aparecer `Worker BullMQ escuchando exports`. Para pruebas sin Redis usa `JOBS_QUEUE_MODE=inline`. |
 | El worker se reinicia en bucle con `exit 0` | `WORKER_MODE` no llegó al contenedor (ConfigModule valida antes del `main`) | Verifica que el servicio `worker` de `docker-compose.yml` incluya `WORKER_MODE: "true"` y reinícialo. |

@@ -16,6 +16,9 @@
  *   --restart            Mata el proceso previo que escuche en PORT antes de arrancar.
  *   --build              Fuerza compilación.
  *   --no-build           No compila.
+ *   --tunnel-only        (o TUNNEL_ONLY=1) No compila NI arranca el backend: solo
+ *                        comprueba /health/ready en PORT y abre el túnel. Lo usa
+ *                        ./start.sh, que ya gestionó build/migrate/health/seed.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import readline from 'node:readline';
@@ -122,6 +125,8 @@ loadEnvFile();
 
 const args = process.argv.slice(2);
 const doRestart = args.includes('--restart');
+// Modo invocado por ./start.sh: el backend (Docker) ya está levantado y listo.
+const tunnelOnly = args.includes('--tunnel-only') || process.env.TUNNEL_ONLY === '1';
 const forceBuild = args.includes('--build') || process.env.FORCE_BUILD === '1';
 const noBuild = args.includes('--no-build') || process.env.SKIP_BUILD === '1';
 
@@ -137,13 +142,18 @@ const skipTunnel = process.env.SKIP_PUBLIC_URL === '1'
 
 const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
-if (doRestart) {
+if (doRestart && !tunnelOnly) {
   log(`Reiniciando: liberando el puerto ${PORT}...`);
   killPort(PORT);
 }
 
-// Build si hace falta
-if (!noBuild) {
+// Build si hace falta (nunca en modo --tunnel-only: ./start.sh ya lo hizo)
+let backend = null;
+let backendExited = false;
+
+if (tunnelOnly) {
+  log('Modo túnel únicamente: no se compila ni se arranca otro backend (./start.sh ya lo gestionó).');
+} else if (!noBuild) {
   const needBuild = forceBuild || !fs.existsSync(DIST_MAIN);
   if (needBuild) {
     log('Compilando (npm run build)...');
@@ -159,25 +169,28 @@ if (!noBuild) {
   log('Compilación omitida (--no-build / SKIP_BUILD).');
 }
 
-if (!fs.existsSync(DIST_MAIN)) {
+if (!tunnelOnly && !fs.existsSync(DIST_MAIN)) {
   err('No existe dist/main.js. Ejecuta `npm run build` primero.');
   process.exit(1);
 }
 
-// Spawn backend
-log(`Iniciando backend en el puerto ${PORT}...`);
-const backend = spawn('node', ['dist/main.js'], {
-  cwd: ROOT,
-  env: process.env,
-  stdio: 'inherit',
-});
-
-let backendExited = false;
-backend.on('exit', (code, signal) => {
-  backendExited = true;
-  if (signal) log(`Backend terminado por señal ${signal}.`);
-  else log(`Backend terminado (código ${code}).`);
-});
+// Spawn backend solo en el modo directo. En --tunnel-only el puerto ya lo
+// publica el contenedor de Docker; lanzar otro proceso daría EADDRINUSE.
+if (tunnelOnly) {
+  log(`Comprobando API existente en el puerto ${PORT}...`);
+} else {
+  log(`Iniciando backend en el puerto ${PORT}...`);
+  backend = spawn('node', ['dist/main.js'], {
+    cwd: ROOT,
+    env: process.env,
+    stdio: 'inherit',
+  });
+  backend.on('exit', (code, signal) => {
+    backendExited = true;
+    if (signal) log(`Backend terminado por señal ${signal}.`);
+    else log(`Backend terminado (código ${code}).`);
+  });
+}
 
 // Esperar readiness
 log(`Esperando a que /health/ready responda (hasta ${READY_TIMEOUT / 1000}s)...`);
@@ -194,7 +207,11 @@ log(`  Health:        http://127.0.0.1:${PORT}/health/ready`);
 
 // Decidir túnel
 let wantTunnel = false;
-if (skipTunnel) {
+if (tunnelOnly) {
+  // ./start.sh ya preguntó al usuario; aquí NO se vuelve a preguntar.
+  wantTunnel = true;
+  log('Túnel solicitado por ./start.sh (modo --tunnel-only).');
+} else if (skipTunnel) {
   log('Túnel omitido (SKIP_PUBLIC_URL/NO_PUBLIC_URL/PUBLIC_URL=0).');
 } else if (forceTunnel) {
   wantTunnel = true;
@@ -263,7 +280,7 @@ if (wantTunnel) {
 function cleanup() {
   log('Cerrando procesos...');
   if (tunnel) { try { tunnel.kill('SIGTERM'); } catch {} }
-  if (!backendExited) { try { backend.kill('SIGTERM'); } catch {} }
+  if (backend && !backendExited) { try { backend.kill('SIGTERM'); } catch {} }
   // dar tiempo a terminar
   setTimeout(() => process.exit(0), 1500);
 }
@@ -271,11 +288,14 @@ function cleanup() {
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
 
-// Si el backend muere, salir
-backend.on('exit', () => {
-  if (tunnel) { try { tunnel.kill('SIGTERM'); } catch {} }
-  setTimeout(() => process.exit(0), 500);
-});
+// Si el backend directo muere, cerrar el túnel y salir.
+// En --tunnel-only no hay backend propio: el de Docker sigue vivo.
+if (backend) {
+  backend.on('exit', () => {
+    if (tunnel) { try { tunnel.kill('SIGTERM'); } catch {} }
+    setTimeout(() => process.exit(0), 500);
+  });
+}
 
 // Esperar indefinidamente
 await new Promise(() => {});
