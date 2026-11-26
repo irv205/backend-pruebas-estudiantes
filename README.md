@@ -10,6 +10,17 @@ API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL
 - [Colección y environment de Postman](postman/README.md)
 - [Exponer la API con Cloudflare Tunnel](#exponer-la-api-con-cloudflare-tunnel) — URL pública para estudiantes; los datos siguen en tu máquina.
 
+## Flujo del estudiante (sin instalación)
+
+Los estudiantes **no instalan ni arrancan nada**: el backend corre en tu máquina y solo consumen la URL pública.
+
+1. Reciben de ti la URL `https://<TU-TUNNEL>.trycloudflare.com` (temporal: cambia en cada ejecución del túnel).
+2. Importan la [colección y el environment de Postman](postman/README.md) y configuran `tunnelUrl`, `hostUrl` y `baseUrl` con esa URL; `baseUrl` añade `/api/v1` y `hostUrl` es solo la raíz. Para WebSocket usan `wsBaseUrl`.
+3. Abren el portal y Swagger en `https://<TUNNEL>/portal` y `https://<TUNNEL>/docs`. La UI de Mailpit **no se expone**: cada estudiante ve solo sus correos en el portal (`GET /api/v1/mail/me`).
+4. Hacen el [Nivel 0 del índice de challenges](docs/coding-challenges.md#nivel-0--conexión-a-la-api-pública) y continúan en orden.
+
+> Si el túnel se reinicia, comparte la URL nueva: las anteriores dejan de funcionar. Los comandos de esta guía siguen siendo solo para el anfitrión.
+
 ## Decisiones mantenidas
 
 - **Una sola base PostgreSQL compartida.** Aislamiento lógico por `spaceId` obligatorio. **No** se crean contenedores, bases ni volúmenes por estudiante.
@@ -215,7 +226,7 @@ El puerto publicado se controla únicamente con `APP_HOST_PORT` en `.env` (en es
 ## Postman y guías de estudio
 
 1. Abre Postman → **Import → Upload Files** y selecciona `postman/backend-practicas.postman_collection.json` y `postman/backend-practicas.postman_environment.json`.
-2. Selecciona el environment **Backend Prácticas - Local (desarrollo)** y comprueba `baseUrl = http://localhost:3100/api/v1` y `hostUrl = http://localhost:3100` (cámbialos si usas otro puerto).
+2. Selecciona el environment **Backend Prácticas - URL pública (estudiantes)**. Pega la URL del túnel en `tunnelUrl` y `hostUrl` (raíz, sin `/api/v1`); en `baseUrl` escribe `<URL_PUBLICA>/api/v1` y en `wsBaseUrl` la raíz con `wss://`. Actualízalos cuando el túnel dé una URL nueva; ver [Flujo del estudiante](#flujo-del-estudiante-sin-instalación).
 3. Ejecuta primero **Health › Readiness** y luego **Auth › Login**: los scripts autopueblan `accessToken`, IDs y `version`. Si no hay login, las peticiones con Bearer devuelven 401.
 4. Detalles, flujo recomendado, roles, simulador, Etapa 3 y la nueva carpeta **Portal** (manifiesto, descargas, espacios y bandeja propia): [postman/README.md](postman/README.md).
 5. Ejercicios y retos para estudiantes: [docs/coding-challenges.md](docs/coding-challenges.md). El [portal](#portal-del-estudiante) muestra el mismo resumen con ejemplos.

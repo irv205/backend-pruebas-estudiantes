@@ -2,13 +2,13 @@
 
 [Índice de la guía](../../coding-challenges.md)
 
-> **URLs:** usa la URL local o la URL pública de Cloudflare configurada en Postman. En los ejemplos, `{{baseUrl}}` es la raíz de la API (`http://localhost:3100/api/v1` o `https://xxxx.trycloudflare.com/api/v1`), `{{hostUrl}}` la raíz del host (`http://localhost:3100` o la URL del túnel) y `{{wsBaseUrl}}` el socket (`ws://localhost:3100` o `wss://<host-del-tunel>`). Sustituye los marcadores por tus valores reales; `baseUrl` y `hostUrl` son variables del environment de Postman.
+> **URLs:** usa la URL pública de Cloudflare que te entregue el profesor. Si eres el anfitrión y trabajas localmente, consulta la sección [Cloudflare Tunnel](../../../README.md#exponer-la-api-con-cloudflare-tunnel) del README. Las variables `{{baseUrl}}`, `{{hostUrl}}` y `{{wsBaseUrl}}` deben apuntar a la URL pública: `{{hostUrl}}` y `tunnelUrl` son la raíz (`<URL_PUBLICA>`), `{{baseUrl}}` es `<URL_PUBLICA>/api/v1` y `{{wsBaseUrl}}` es `wss://<host-publico>`. El prefijo `/api/v1` **no** se duplica.
 > **Convención:** `TOKEN` es tu `accessToken`, `<uuid>` un identificador real copiado de una respuesta y `<spaceId>` el UUID de tu sandbox o equipo.
+> **Cuenta compartida:** el usuario sembrado de desarrollo es solo de práctica. Con una sola URL pública, todos los estudiantes que lo usen caen en el **mismo espacio personal**. Usa un sandbox propio (`x-space-id`) o registra tu propia cuenta cuando el desafío lo permita (Nivel 3), y **no cambies la contraseña sembrada**.
 
 ---
 
-
-**Objetivo de aprendizaje:** entender el flujo de la collection y cómo los scripts de test autopueblan tokens e IDs.
+**Objetivo de aprendizaje:** entender el flujo de la collection y cómo los scripts de test autopueblan tokens e IDs contra la API pública. **No instalas ni arrancas nada.**
 
 **Endpoints exactos**
 
@@ -18,32 +18,35 @@
 
 **Pasos**
 
-1. Importa collection y environment (sección [Importar Postman](#importar-postman)). Selecciona el environment.
+1. Importa la colección y el environment siguiendo [postman/README.md](../../../postman/README.md) o la sección [Importar Postman](../../coding-challenges.md#importar-postman). Selecciona el environment **Backend Prácticas - URL pública (estudiantes)** y pega la URL del profesor en `tunnelUrl` y `hostUrl`; en `baseUrl` escribe esa misma raíz **más `/api/v1`**. Si el profesor te da una URL nueva, actualiza las tres.
 2. Ejecuta `Health › Readiness`.
-3. Ejecuta `Auth › Login (pobla accessToken/refreshToken)` con `estudiante@practicas.local` / `Estudiante.123`.
+3. Ejecuta `Auth › Login (pobla accessToken/refreshToken)` con `estudiante@practicas.local` / `Estudiante.123` (usuario de práctica, no real). Para no compartir espacio con otros estudiantes, crea tu propio sandbox anónimo o registra tu cuenta propia en el Nivel 3; no modifiques la contraseña del usuario sembrado.
 4. Abre la pestaña *Tests* del request de login y comprueba que `accessToken`, `refreshToken` y `userId` quedaron escritos en el environment.
-5. Ejecuta `Users › Obtener mi perfil` y repite lo mismo con `curl`:
+5. Ejecuta `Users › Obtener mi perfil` y repite lo mismo con `curl` (sustituye `<URL_PUBLICA>` por la URL que te dio el profesor):
    ```bash
+   URL_PUBLICA='https://<TU-TUNNEL>.trycloudflare.com'
    TOKEN=$(curl -s -H 'Content-Type: application/json' \
      -d '{"email":"estudiante@practicas.local","password":"Estudiante.123"}' \
-     {{baseUrl}}/auth/login | jq -r .data.tokens.accessToken)
+     "$URL_PUBLICA/api/v1/auth/login" | jq -r .data.tokens.accessToken)
 
-   curl -i -H "Authorization: Bearer $TOKEN" {{baseUrl}}/users/me
+   curl -i -H "Authorization: Bearer $TOKEN" "$URL_PUBLICA/api/v1/users/me"
    ```
+   En Postman usa `GET {{baseUrl}}/users/me`. No pegues el `TOKEN` en capturas ni logs.
 
 **Criterios de aceptación**
 
 - [ ] Login responde `200` y `data.tokens.accessToken` / `data.tokens.refreshToken` no están vacíos.
-- [ ] `GET /users/me` responde `200` con `{ "data": { ... } }` usando el token.
+- [ ] `GET /users/me` responde `200` con `{ "data": { ... } }` usando el token contra la URL pública.
 - [ ] Sin header `Authorization`, `GET /users/me` responde `401`.
 - [ ] Los IDs y versiones se autopueblan tras crear recursos.
+- [ ] No configuraste nada en local ni incluiste tokens en la evidencia.
 
-**Pista:** si los requests con Bearer devuelven `401`, ejecuta `Auth › Login` otra vez; es el primer paso de la collection.
+**Pista:** si los requests con Bearer devuelven `401`, ejecuta `Auth › Login` otra vez; es el primer paso de la collection. Si devuelven `404` o fallan de red, pide al profesor la URL vigente del túnel.
 
-**Errores comunes:** no seleccionar environment; olvidar la palabra `Bearer`; borrar las credenciales del environment y no volver a escribirlas; pegar el `refreshToken` donde va el `accessToken`.
+**Errores comunes:** no seleccionar environment; olvidar la palabra `Bearer`; borrar las credenciales del environment y no volver a escribirlas; pegar el `refreshToken` donde va el `accessToken`; duplicar `/api/v1`; usar una URL de túnel anterior.
 
 **Extensión opcional:** crea una carpeta propia en Postman con solo los requests de tu nivel y un `Pre-request Script` que valide que `accessToken` no esté vacío.
 
 ---
 
-[← Anterior](./c0-1-arranca-el-backend-y-comprueba-que-esta-vivo.md) · [Índice](../../coding-challenges.md) · [Siguiente →](../level-1/c1-1-listar-el-catalogo-publico.md)
+[← Anterior](./c0-1-conectate-a-la-api-publica-y-comprueba-que-esta-viva.md) · [Índice](../../coding-challenges.md) · [Siguiente →](../level-1/c1-1-listar-el-catalogo-publico.md)

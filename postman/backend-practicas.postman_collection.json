@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "7f1c9e64-3a2b-4f81-9d0e-2c6b5a8f4e11",
     "name": "Backend de prácticas (Etapas 1-4)",
-    "description": "Collection del backend NestJS de prácticas (Etapas 1-4). Prefijo global /api/v1; health fuera del prefijo.\nEjecuta primero Auth › Login para poblar accessToken/refreshToken. Los IDs se autopueblan con los scripts de test.\nEtapa 4: Realtime (documentación WS + salas de chat), Notifications, Jobs (exports CSV inline/Redis) y Web Auth (cookies HttpOnly + CSRF).\nEl socket se conecta en ws://localhost:3100/socket.io con auth.token={{accessToken}}; eventos: chat:send/message, resource:changed, notification:new, job:updated, events:replay.\nNo incluye secretos de producción: las credenciales del environment son solo del seed de desarrollo.\nPortal del estudiante: UI en /portal (HTML/CSS/JS vanilla), manifiesto/descargas autorizadas, bandeja propia en /mail/me y guía de challenges. Ejecuta primero Auth › Login.",
+    "description": "Collection del backend NestJS de prácticas (Etapas 1-4). Prefijo global /api/v1; health fuera del prefijo.\nEjecuta primero Auth › Login para poblar accessToken/refreshToken. Los IDs se autopueblan con los scripts de test.\nEtapa 4: Realtime (documentación WS + salas de chat), Notifications, Jobs (exports CSV inline/Redis) y Web Auth (cookies HttpOnly + CSRF).\nEl socket se conecta en {{wsBaseUrl}}/socket.io (wss://<TU-TUNNEL>.trycloudflare.com/socket.io) con auth.token={{accessToken}}; eventos: chat:send/message, resource:changed, notification:new, job:updated, events:replay.\nNo incluye secretos de producción: las credenciales del environment son solo del seed de desarrollo.\nPortal del estudiante: UI en /portal (HTML/CSS/JS vanilla), manifiesto/descargas autorizadas, bandeja propia en /mail/me y guía de challenges. Ejecuta primero Auth › Login.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -4534,7 +4534,7 @@
               ],
               "query": []
             },
-            "description": "El socket NO se prueba desde Postman REST. Ejemplo JS:\nconst s = io(\"http://localhost:3100\",{auth:{token:accessToken}});\ns.on(\"connection:ready\",()=>s.emit(\"chat:send\",{roomId,content:\"hola\"}));\ns.on(\"chat:message\",console.log);\ns.on(\"events:replay\",console.log);\ns.emit(\"events:replay\",{lastEventId:0,limit:50});"
+            "description": "El socket NO se prueba desde Postman REST. Conecta con la URL pública del profesor. Ejemplo JS:\nconst s = io(\"{{wsBaseUrl}}\",{auth:{token:accessToken}});\ns.on(\"connection:ready\",()=>s.emit(\"chat:send\",{roomId,content:\"hola\"}));\ns.on(\"chat:message\",console.log);\ns.on(\"events:replay\",console.log);\ns.emit(\"events:replay\",{lastEventId:0,limit:50});"
           },
           "event": []
         }
@@ -5484,15 +5484,21 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:3100/api/v1",
+      "value": "https://<TU-TUNNEL>.trycloudflare.com/api/v1",
       "type": "string",
-      "description": "Prefijo global de la API (APP_HOST_PORT por defecto 3100)."
+      "description": "PLACEHOLDER: raíz pública del profesor más /api/v1 (selecciona el environment de estudiantes)."
     },
     {
       "key": "hostUrl",
-      "value": "http://localhost:3100",
+      "value": "https://<TU-TUNNEL>.trycloudflare.com",
       "type": "string",
-      "description": "Raíz del servidor; health está fuera de /api/v1."
+      "description": "PLACEHOLDER: raíz pública sin /api/v1; health está fuera de /api/v1."
+    },
+    {
+      "key": "wsBaseUrl",
+      "value": "wss://<TU-TUNNEL>.trycloudflare.com",
+      "type": "string",
+      "description": "PLACEHOLDER: raíz pública para Socket.IO ({{wsBaseUrl}}/socket.io)."
     },
     {
       "key": "accessToken",

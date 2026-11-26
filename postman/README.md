@@ -7,12 +7,24 @@ Archivos:
 - `backend-practicas.postman_collection.json` (Postman Collection v2.1)
 - `backend-practicas.postman_environment.json` (Postman Environment)
 
+## Flujo del estudiante (sin instalación)
+
+No necesitas Docker, Node ni acceso al repositorio: el profesor arranca el backend y abre un túnel.
+
+1. Recibe del profesor la URL pública `https://<TU-TUNNEL>.trycloudflare.com`. Es temporal: **cambia en cada ejecución**.
+2. Importa ambos archivos JSON y selecciona el environment **Backend Prácticas - URL pública (estudiantes)** (pasos abajo).
+3. Pega la URL en `tunnelUrl`; deriva `hostUrl` (raíz), `baseUrl` (raíz + `/api/v1`) y `wsBaseUrl` (raíz con `wss://`). Actualiza las cuatro si el túnel genera una URL nueva.
+4. Abre portal y Swagger en `https://<TUNNEL>/portal` y `https://<TUNNEL>/docs`; la UI de Mailpit no se expone, tus correos están en el portal (`GET {{baseUrl}}/mail/me`).
+5. Empieza por el [Nivel 0 del índice](../docs/coding-challenges.md#nivel-0--conexión-a-la-api-pública).
+
 ## Importar
 
 1. En Postman: **Import → Upload Files** y selecciona ambos archivos JSON (también puedes arrastrar la carpeta `postman/`).
-2. En el selector de environment (arriba a la derecha) elige **Backend Prácticas - Local (desarrollo)**.
-3. Comprueba las variables `baseUrl` = `http://localhost:3100/api/v1` y `hostUrl` = `http://localhost:3100`. Además de los IDs de las etapas anteriores, están `orderId`, `paymentId`, `idempotencyKey` (Etapa 3), `notificationId`, `jobId`, `roomId`, `csrfToken`, `webRefreshToken` (Etapa 4) y `portalSpaceId` (portal).
-4. La documentación interactiva de la API está en `http://localhost:3100/docs` (Swagger).
+2. En el selector de environment (arriba a la derecha) elige **Backend Prácticas - URL pública (estudiantes)**.
+3. Pega la URL del profesor en `tunnelUrl` y `hostUrl` = `<URL_PUBLICA>` (raíz, **sin** `/api/v1`). Escribe `baseUrl` = `<URL_PUBLICA>/api/v1` y `wsBaseUrl` = `wss://<host-publico>`. Los valores que trae el archivo son placeholders con `<TU-TUNNEL>.trycloudflare.com`, no URLs reales. Además de los IDs de las etapas anteriores, están `orderId`, `paymentId`, `idempotencyKey` (Etapa 3), `notificationId`, `jobId`, `roomId`, `csrfToken`, `webRefreshToken` (Etapa 4) y `portalSpaceId` (portal).
+4. La documentación interactiva de la API está en `{{hostUrl}}/docs` (Swagger) y el portal en `{{hostUrl}}/portal`.
+
+> Los health checks (`/health/live`, `/health/ready`) están fuera de `/api/v1`: usa `{{hostUrl}}`, no `{{baseUrl}}`. Si eres el anfitrión trabajando en local, consulta [la sección Cloudflare del README](../README.md#exponer-la-api-con-cloudflare-tunnel); los comandos de arranque son solo para ti.
 
 ## Flujo recomendado de ejecución
 
@@ -46,7 +58,7 @@ La carpeta **Cart & Orders** sigue este orden (usa el `productId` autopoblado po
 
 ## Etapa 4: Realtime, Notifications, Jobs y Web Auth
 
-- **Realtime:** el socket no se prueba con requests REST. Conecta desde tu cliente a `ws://localhost:3100/socket.io` con `auth: { token: "{{accessToken}}" }`. La carpeta contiene la creación de sala (`roomId` se autopuebla), el listado y el historial. Eventos: `connection:ready`, `chat:send` → `chat:message`, `resource:changed`, `notification:new`, `job:updated`, `events:replay` (envía `{ lastEventId: 0, spaceId, limit: 50 }`) y `ws:error`. El replay es la forma de recuperar eventos tras reconectar.
+- **Realtime:** el socket no se prueba con requests REST. Conecta desde tu cliente a `{{wsBaseUrl}}/socket.io` (`wss://<host-publico>/socket.io`) con `auth: { token: "{{accessToken}}" }`. La carpeta contiene la creación de sala (`roomId` se autopuebla), el listado y el historial. Eventos: `connection:ready`, `chat:send` → `chat:message`, `resource:changed`, `notification:new`, `job:updated`, `events:replay` (envía `{ lastEventId: 0, spaceId, limit: 50 }`) y `ws:error`. El replay es la forma de recuperar eventos tras reconectar.
 - **Notifications:** ejecuta *Listar notificaciones* (autopuebla `notificationId`) después de pagar/cancelar un pedido o de completar/fallar un export; comprueba *Contar no leídas*, *Detalle*, *Marcar como leída* y *Marcar todas como leídas*.
 - **Jobs:** *Crear export de productos/notas* autopuebla `jobId`. Con `JOBS_QUEUE_MODE=redis` el primer estado suele ser `PENDING`: usa *Consultar estado del trabajo* hasta `COMPLETED`/`FAILED` (o `inline` en tests, donde responde `COMPLETED`). Luego *Descargar CSV terminado* (antes devuelve `409 EXPORT_NOT_READY`). Para provocar un fallo: **Simulator › Activar failedAsyncJob**, crear otro export, verificar `FAILED`, y ejecutar **Simulator › Desactivar todos los escenarios (limpieza)**.
 - **Web Auth (cookies/CSRF):** *Login web* guarda `webRefreshToken` y `csrfToken` desde las cookies `Set-Cookie` y actualiza `accessToken` (el body **no** devuelve el refresh token). *Obtener CSRF* rota el token double-submit. *Renovar sesión web* y *Logout web* envían `Cookie: refresh_token={{webRefreshToken}}; csrf_token={{csrfToken}}` y `X-CSRF-Token: {{csrfToken}}`. **Estos dos requests NO envían `Authorization: Bearer` a propósito**: el guard CSRF se salta cuando hay Bearer, así que con él no se estaría probando el flujo de cookies. El request *Renovar sesión web sin CSRF (403)* comprueba que, sin la cabecera `X-CSRF-Token`, la respuesta es `403 CSRF_TOKEN_INVALID`. Las rutas Bearer habituales siguen funcionando igual y no requieren CSRF.
@@ -57,7 +69,7 @@ La carpeta **Cart & Orders** sigue este orden (usa el `productId` autopoblado po
 
 ## Portal del estudiante
 
-La carpeta **Portal** contiene los requests de la UI disponible en `http://localhost:3100/portal`:
+La carpeta **Portal** contiene los requests de la UI disponible en `{{hostUrl}}/portal` (URL pública):
 
 1. **UI del portal · GET {{hostUrl}}/portal** (sin Bearer) comprueba que la página HTML se sirve desde la propia app.
 2. **Manifiesto** expone `apiBaseUrl`, `swaggerUrl`, descargas, los 12 escenarios reales y los niveles 0-6.
@@ -71,7 +83,7 @@ La carpeta **Portal** contiene los requests de la UI disponible en `http://local
 >
 > ```js
 > import { io } from 'socket.io-client';
-> const socket = io('http://localhost:3100', { auth: { token: accessToken } });
+> const socket = io('{{wsBaseUrl}}', { auth: { token: accessToken } }); // wss://<TU-TUNNEL>.trycloudflare.com
 > socket.on('connection:ready', ({ user, spaces }) => console.log(user.id, spaces));
 > socket.on('chat:message', console.log);
 > socket.on('notification:new', console.log);
@@ -82,14 +94,18 @@ La carpeta **Portal** contiene los requests de la UI disponible en `http://local
 >
 > Para probar el chat, crea una sala con *Realtime › Crear sala de chat* (guarda `roomId`) y emite `socket.emit('chat:send', { roomId, content: 'hola' })`. Guarda el `id` del último evento para reconectar con `lastEventId`.
 
-## Cambiar el puerto (baseUrl)
+## Solo anfitrión: puerto local
 
-El `docker-compose` publica la app en `http://localhost:3100` porque `.env` (y la plantilla de este entorno) define `APP_HOST_PORT=3100`; `PUBLIC_BASE_URL` usa el mismo puerto. Si usas otro puerto, edita **dos** variables del environment:
+> Esto **no aplica al estudiante**, que solo usa la URL pública. El `docker-compose` publica la app en `http://localhost:3100` porque `.env` define `APP_HOST_PORT=3100`; `PUBLIC_BASE_URL` debe ser la **raíz pública sin `/api/v1`** porque el código añade el sufijo. Si el anfitrión cambia el puerto local, ajusta en su copia:
 
 - `baseUrl` → `http://localhost:<PUERTO>/api/v1`
 - `hostUrl` → `http://localhost:<PUERTO>` (para `/health/live` y `/health/ready`)
 
+Para estudiantes, vuelve a las variables públicas del apartado [Importar](#importar).
+
 ## Usar la URL pública de Cloudflare Tunnel
+
+> **Solo anfitrión/profesor:** los estudiantes no ejecutan estos comandos; solo reciben la URL impresa y actualizan sus variables de Postman. Ver [Flujo del estudiante](#flujo-del-estudiante-sin-instalación).
 
 El script `scripts/start-with-public-url.mjs` crea un **quick tunnel anónimo** con `cloudflared tunnel --url http://127.0.0.1:$PORT` y muestra una URL temporal `https://xxxx.trycloudflare.com` (cambia en cada ejecución; no usa tokens ni config de Cloudflare). Si arrancas con `./start.sh`, abre el túnel a mano apuntando a `APP_HOST_PORT`: `cloudflared tunnel --url http://127.0.0.1:3100`.
 
@@ -98,7 +114,8 @@ Con la URL impresa en la terminal:
 1. Pégala en `tunnelUrl` (viene con el placeholder `https://<TU-TUNNEL>.trycloudflare.com`; **no es una URL real**).
 2. Copia la misma URL en `hostUrl` (para `/health/live`, `/health/ready`, `/docs` y `/portal`).
 3. Copia la misma URL **más `/api/v1`** en `baseUrl`: `https://xxxx.trycloudflare.com/api/v1`.
-4. Repite los pasos 1-3 cada vez que el túnel genere una URL nueva. Si quieres que los enlaces de correos y el manifiesto del portal usen la URL pública, pon `PUBLIC_BASE_URL=https://xxxx.trycloudflare.com` en `.env` (**sin `/api/v1`**) y reinicia la app.
+4. Copia la raíz con `wss://` en `wsBaseUrl` para Socket.IO: `wss://xxxx.trycloudflare.com`.
+5. Repite los pasos 1-4 cada vez que el túnel genere una URL nueva (compártela con tus estudiantes). Si quieres que los enlaces de correos y el manifiesto del portal usen la URL pública, pon `PUBLIC_BASE_URL=https://xxxx.trycloudflare.com` en `.env` (**sin `/api/v1`**) y reinicia la app.
 
 Los correos de prueba **siguen en local**: la UI de Mailpit es solo `http://127.0.0.1:8025` y no se expone; los estudiantes ven los suyos con `GET {{baseUrl}}/mail/me` en el portal. El túnel solo transporta peticiones HTTP: PostgreSQL, Redis, `.env`, tokens y archivos de configuración de cloudflared nunca se publican; los datos permanecen en los volúmenes Docker de tu máquina. Comparte la URL solo con tus estudiantes y rota el túnel (reinícialo) si se filtra. Ver más en el [README principal](../README.md#exponer-la-api-con-cloudflare-tunnel).
 
@@ -136,6 +153,6 @@ La carpeta **Simulator** usa las 12 claves reales del código (`src/simulator/sc
 
 ## Credenciales de desarrollo (importante)
 
-El environment incluye `email = estudiante@practicas.local` y `password = Estudiante.123` porque son el usuario sembrado del seed: **solo desarrollo / práctica, no usar en producción**. `password` está marcado como `secret` y ambos tienen `initialValue` vacío. No hay secretos de producción. Si vas a compartir/exportar el environment, limpia esos dos valores y vuelve a escribirlos localmente.
+El environment incluye `email = estudiante@practicas.local` y `password = Estudiante.123` porque son el usuario sembrado del seed: **solo desarrollo / práctica, no usar en producción**. Con una sola URL pública, todos los estudiantes que lo usen comparten el mismo espacio personal: recomienda sandbox propio o cuenta propia y **no cambiar la contraseña sembrada**. `password` está marcado como `secret` y ambos tienen `initialValue` vacío. No hay secretos de producción. Si vas a compartir/exportar el environment, limpia esos dos valores y vuelve a escribirlos localmente.
 
 Los requests **Cambiar contraseña** y **Eliminar mi cuenta** son destructivos para el usuario sembrado; úsalos con cuidado y vuelve a sembrar si hace falta.

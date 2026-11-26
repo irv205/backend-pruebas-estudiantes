@@ -2,7 +2,9 @@
 
 Esta guía es tu hoja de ruta para practicar integración de clientes (web, Android, iOS o escritorio) contra el backend de prácticas. Cada desafío se puede resolver **con la colección de Postman o con `curl`**: no necesitas permisos especiales ni tocar el código del servidor.
 
-> **Estado real del backend:** Etapas **1, 2, 3 y 4 implementadas**. Los niveles 5 (carrito, pedidos, pagos e idempotencia) y 6 (WebSocket, notificaciones y exportaciones) **están disponibles**. El [portal del estudiante](http://localhost:3100/portal) permite hacer todo el flujo desde el navegador; las guías cliente JS/Kotlin/Retrofit completas siguen pendientes (el portal incluye ejemplos resumidos).
+> **No instales nada.** El backend corre en la máquina del profesor y se consume a través de una URL pública de Cloudflare (`https://<URL_PUBLICA>`, p. ej. `https://xxxx.trycloudflare.com`). Recibe esa URL, importa la colección/environment de Postman y empieza por el Nivel 0. La URL es temporal: **cambia en cada ejecución** del túnel; actualiza las variables cuando el profesor te dé una nueva.
+
+> **Estado real del backend:** Etapas **1, 2, 3 y 4 implementadas**. Los niveles 5 (carrito, pedidos, pagos e idempotencia) y 6 (WebSocket, notificaciones y exportaciones) **están disponibles**. El portal del estudiante (`{{hostUrl}}/portal`) permite hacer todo el flujo desde el navegador; las guías cliente JS/Kotlin/Retrofit completas siguen pendientes (el portal incluye ejemplos resumidos).
 
 ---
 
@@ -10,54 +12,50 @@ Esta guía es tu hoja de ruta para practicar integración de clientes (web, Andr
 
 ### Cómo usar esta guía
 
-1. Empieza por el **Nivel 0** y avanza en orden. Cada nivel reutiliza lo anterior.
-2. Para cada desafío lee el **objetivo**, sigue los **pasos**, y comprueba los **criterios de aceptación** antes de pasar al siguiente.
-3. Usa la **pista** si te atascas, y la **extensión opcional** si quieres subir el nivel.
-4. Al terminar un nivel, anota qué comprobaste y guarda tus capturas/logs según la sección [Cómo entregar la solución](#7-cómo-entregar-la-solución).
+1. Pide al profesor la URL pública y configura las variables de Postman (`tunnelUrl`, `hostUrl`, `baseUrl` y `wsBaseUrl`), como se explica en [postman/README.md](../postman/README.md).
+2. Empieza por el **Nivel 0** y avanza en orden. Cada nivel reutiliza lo anterior.
+3. Para cada desafío lee el **objetivo**, sigue los **pasos**, y comprueba los **criterios de aceptación** antes de pasar al siguiente.
+4. Usa la **pista** si te atascas, y la **extensión opcional** si quieres subir el nivel.
+5. Al terminar un nivel, anota qué comprobaste y guarda tus capturas/logs según la sección [Cómo entregar la solución](#7-cómo-entregar-la-solución).
 
 No modifiques el código del backend: aquí el objetivo es **consumir** la API, no cambiarla.
 
-### Requisitos
+### Requisitos (estudiante)
 
-- Docker Engine 29+ y Docker Compose v5+ para arrancar el servicio.
-- Opcional: Node 20.18.1 (ver `.nvmrc`) y npm si prefieres los scripts `npm run project:*`.
-- `curl` y, si quieres, `jq` para leer JSON en terminal.
-- Postman (app o web) para usar la colección.
+- Un navegador para abrir el portal y Swagger en la URL pública.
+- Postman (app o web) para usar la [colección y el environment](../postman/README.md); `curl` es opcional (y `jq` si quieres leer JSON en terminal).
+- La URL pública que te dé el profesor. No necesitas Docker, Node, Git ni permisos sobre el repositorio.
 - Un editor para escribir tus clientes de ejemplo (JavaScript/TypeScript o Kotlin/Retrofit).
 
-### Arranque rápido
+> **Solo anfitrión/profesor:** Docker Engine 29+, Docker Compose v5+ y, si quiere, Node 20.18.1. El arranque del backend, las migraciones, el seed y la apertura del túnel están descritos en el [README principal](../README.md#exponer-la-api-con-cloudflare-tunnel). No son requisitos ni pasos del estudiante.
 
-```bash
-cp .env.example .env       # revisa APP_HOST_PORT=3100; NUNCA versiones .env
-./start.sh                 # equivalente: npm run project:start
-```
+> Los ejemplos opcionales con `curl` de esta guía funcionan tal cual en bash (macOS/Linux).
 
-Espera a que `start.sh` termine: ejecuta migraciones, espera `GET /health/ready` y aplica el seed idempotente. Para apagar: `./stop.sh` o `npm run project:stop`. Para reiniciar: `./restart.sh` o `npm run project:restart` (acepta `--no-seed` para no resembrar).
+### URLs y variables (URL pública)
 
-> Los ejemplos con `curl` de esta guía funcionan tal cual en bash (macOS/Linux).
-
-**URLs base de este entorno:**
-
-| Recurso | URL |
+| Recurso | Variable / URL |
 |---|---|
-| API | `http://localhost:3100/api/v1` |
-| Swagger UI | `http://localhost:3100/docs` |
-| Health (fuera de `/api/v1`) | `http://localhost:3100/health/live` y `http://localhost:3100/health/ready` |
-| Mailpit (solo en el host) | `http://127.0.0.1:8025` |
-| Portal del estudiante | `http://localhost:3100/portal` |
+| API (prefijo `/api/v1`) | `{{baseUrl}}` = `<URL_PUBLICA>/api/v1` |
+| Swagger UI | `{{hostUrl}}/docs` |
+| Health (fuera de `/api/v1`) | `{{hostUrl}}/health/live` y `{{hostUrl}}/health/ready` |
+| Portal del estudiante | `{{hostUrl}}/portal` |
+| Correos propios | `{{baseUrl}}/mail/me` desde el portal; la UI de Mailpit **no** se expone |
+| WebSocket | `{{wsBaseUrl}}/socket.io` = `wss://<host-publico>/socket.io` |
 
-**Usuario de prueba del seed (solo desarrollo):**
+`<URL_PUBLICA>` es la raíz que imprime el túnel del profesor, p. ej. `https://<TU-TUNNEL>.trycloudflare.com`. Esa raíz va en `tunnelUrl` y `hostUrl`; añade `/api/v1` solo en `baseUrl`. Si el profesor reinicia el túnel, actualiza las variables. `PUBLIC_BASE_URL` es ajuste del anfitrión y también se configura sin `/api/v1` porque el código añade el sufijo.
+
+**Usuario de prueba del seed (solo desarrollo, compartido):**
 
 ```
 email:    estudiante@practicas.local
 password: Estudiante.123
 ```
 
-Si tu `.env` usa otro puerto, cambia `3100` por `APP_HOST_PORT` en todos los ejemplos. Si usas Cloudflare Tunnel, sustituye `http://localhost:3100` por la URL pública en `baseUrl`/`hostUrl` de Postman y en `PUBLIC_BASE_URL` (**sin `/api/v1`**).
+Con una sola URL pública, todos los estudiantes que usen ese usuario caen en el **mismo espacio personal**. Para aislarte, usa un sandbox anónimo propio (`x-space-id`) o registra tu propia cuenta (Nivel 3). **No cambies la contraseña sembrada**.
 
 ### Portal del estudiante (Nivel 0)
 
-Abre **`http://localhost:3100/portal`** y entra con el usuario de prueba. La UI usa el mismo flujo web de cookies `HttpOnly` + CSRF; el access token se conserva solo en memoria del navegador. Desde el portal puedes:
+Abre **`{{hostUrl}}/portal`** con la URL pública y entra con el usuario de prueba (o crea tu propio sandbox/cuenta). La UI usa el mismo flujo web de cookies `HttpOnly` + CSRF; el access token se conserva solo en memoria del navegador. Desde el portal puedes:
 
 - Ver la URL base de la API, Swagger, la colección/environment de Postman y la guía completa (`GET /api/v1/portal/manifest`).
 - Listar y seleccionar tu espacio personal, equipos, la demo pública o un sandbox anónimo; crear sandbox/equipo y ver el `spaceId` activo (`GET /api/v1/portal/spaces` y los endpoints existentes de `/spaces` y `/public/sandboxes`).
@@ -69,11 +67,11 @@ Abre **`http://localhost:3100/portal`** y entra con el usuario de prueba. La UI 
 
 ### Importar Postman
 
-1. Importa **los dos archivos**: `postman/backend-practicas.postman_collection.json` y `postman/backend-practicas.postman_environment.json`.
-2. Selecciona el environment **Backend Prácticas - Local (desarrollo)**.
-3. Verifica `baseUrl = http://localhost:3100/api/v1` y `hostUrl = http://localhost:3100` (con Cloudflare Tunnel: `baseUrl = <URL_PUBLICA>/api/v1` y `hostUrl = <URL_PUBLICA>`; la variable `tunnelUrl` guarda la URL impresa).
+1. Importa **los dos archivos**: `postman/backend-practicas.postman_collection.json` y `postman/backend-practicas.postman_environment.json` (detalles en [postman/README.md](../postman/README.md)).
+2. Selecciona el environment **Backend Prácticas - URL pública (estudiantes)**.
+3. Pega la URL que te dio el profesor en `tunnelUrl` y `hostUrl`: `hostUrl = <URL_PUBLICA>`. En `baseUrl` escribe `<URL_PUBLICA>/api/v1`. Para WebSocket, `wsBaseUrl = wss://<host-publico>`. Repite si el túnel genera una URL nueva.
 4. **Ejecuta primero `Auth › Login (pobla accessToken/refreshToken)`**. Sin ese paso, los requests con Bearer devuelven `401`. Los scripts de test autopueblan `accessToken`, `refreshToken`, `userId` y los IDs/versiones de productos, notas, categorías, tareas y archivos.
-5. Si usas otro puerto, edita **ambas** variables (`baseUrl` y `hostUrl`).
+5. No instales ni arranques nada en local: si eres el anfitrión trabajando en tu máquina, consulta el [README principal](../README.md#exponer-la-api-con-cloudflare-tunnel).
 
 ### Convenciones de la API
 
@@ -109,7 +107,7 @@ El propietario de un equipo siempre es `ADMINISTRADOR`; `LECTOR` solo consulta, 
 
 Disponibles (Etapas 1-2): health, auth, users, spaces/roles, categories, products y public/products, notes, tasks/subtasks, files (multipart) y simulator.
 
-Disponibles desde la Etapa 3: carrito, pedidos, pagos simulados e idempotencia (Nivel 5). Disponibles desde la Etapa 4 (Nivel 6): notificaciones, WebSocket/chat con replay, export jobs con worker/Redis y login web con cookies `HttpOnly` + CSRF. El portal del estudiante reúne todos esos flujos en `http://localhost:3100/portal`; las guías cliente JS/Kotlin/Retrofit completas siguen pendientes.
+Disponibles desde la Etapa 3: carrito, pedidos, pagos simulados e idempotencia (Nivel 5). Disponibles desde la Etapa 4 (Nivel 6): notificaciones, WebSocket/chat con replay, export jobs con worker/Redis y login web con cookies `HttpOnly` + CSRF. El portal del estudiante reúne todos esos flujos en `{{hostUrl}}/portal`; las guías cliente JS/Kotlin/Retrofit completas siguen pendientes.
 
 ---
 
@@ -117,7 +115,7 @@ Disponibles desde la Etapa 3: carrito, pedidos, pagos simulados e idempotencia (
 
 | Nivel | Tema | Proyecto sugerido | Estado | Desafíos |
 |---|---|---|---|---|
-| 0 | Preparación del entorno | Arrancar la API y ejecutar Postman | Disponible | 2 |
+| 0 | Conexión a la API pública | Conectar a la URL pública y ejecutar Postman | Disponible | 2 |
 | 1 | Inicial | Catálogo público: listado y detalle | Disponible | 4 |
 | 2 | Básico | CRUD de productos en sandbox anónimo | Disponible | 4 |
 | 3 | Intermedio | Registro, login, perfil y notas privadas | Disponible | 5 |
@@ -127,7 +125,7 @@ Disponibles desde la Etapa 3: carrito, pedidos, pagos simulados e idempotencia (
 
 Después del Nivel 6 encontrarás el **proyecto final sugerido**. **Total: 24 desafíos.**
 
-Cada desafío tiene su **propio archivo** en [`docs/challenges/`](challenges/); los ejemplos usan `{{baseUrl}}` / `{{hostUrl}}` (URL local o URL pública de Cloudflare configurada en Postman).
+Cada desafío tiene su **propio archivo** en [`docs/challenges/`](challenges/); los ejemplos usan las variables de la URL pública de Cloudflare configuradas en Postman (`{{baseUrl}}`, `{{hostUrl}}` y `{{wsBaseUrl}}`).
 
 > Convención de los ejemplos: `TOKEN` es tu `accessToken`, `<uuid>` un identificador real copiado de una respuesta, y `<spaceId>` el UUID de tu sandbox o equipo. Sustituye siempre los marcadores por valores reales.
 
@@ -138,11 +136,11 @@ Cada desafío tiene su **propio archivo** en [`docs/challenges/`](challenges/); 
 
 Cada enlace abre el desafío completo (objetivo, endpoints, pasos, criterios, pista, errores comunes, extensión y ejemplos).
 
-### Nivel 0 — Preparación del entorno
+### Nivel 0 — Conexión a la API pública
 
+No instalas ni arrancas nada: solo recibes la URL pública del profesor, configuras Postman y compruebas health, Swagger y portal.
 
-
-- [C0.1 — Arranca el backend y comprueba que está vivo](./challenges/level-0/c0-1-arranca-el-backend-y-comprueba-que-esta-vivo.md)
+- [C0.1 — Conéctate a la API pública y comprueba que está viva](./challenges/level-0/c0-1-conectate-a-la-api-publica-y-comprueba-que-esta-viva.md)
 - [C0.2 — Importa Postman y ejecuta tu primer flujo autenticado](./challenges/level-0/c0-2-importa-postman-y-ejecuta-tu-primer-flujo-autenticado.md)
 
 ---
@@ -209,7 +207,7 @@ Estos endpoints **ya existen** (Etapa 3, disponibles en `/docs`). Requieren `Aut
 ### Nivel 6 — Integraciones: WebSockets, notificaciones y exportaciones
 
 
-> **Disponible desde la Etapa 4.** Requiere `docker compose up -d --build` para que arranquen `redis` y `worker`. En CI/e2e se usa `JOBS_QUEUE_MODE=inline` y no se necesita Redis.
+> **Nivel 6 disponible.** El estudiante solo conecta con `{{wsBaseUrl}}` y usa los endpoints; no instala ni arranca nada. **Solo anfitrión/profesor:** asegúrate de que `redis` y `worker` estén arrancados (`docker compose up -d --build`); en CI/e2e se usa `JOBS_QUEUE_MODE=inline` y no se necesita Redis.
 
 - [C6.1 — WebSockets, chat y notificaciones](./challenges/level-6/c6-1-websockets-chat-y-notificaciones.md)
 - [C6.2 — Exportaciones asíncronas](./challenges/level-6/c6-2-exportaciones-asincronas.md)
@@ -242,15 +240,16 @@ La configuración se guarda **por espacio** y persiste. Actívala con `PATCH /sp
 | Pedido repetido | `duplicateOrder` | `{"duplicateOrder":true}` | `201` con el mismo pedido al repetir `POST /orders`: misma idempotencia, sin doble descuento de stock; ver Nivel 5 |
 | Trabajo asíncrono fallido | `failedAsyncJob` | `{"failedAsyncJob":true}` | Los export jobs del espacio terminan en `FAILED` con error reproducible; ver Nivel 6 |
 
-Comprobación rápida de limpieza en Postman: `Simulator › Desactivar todos los escenarios (limpieza)`, o:
+Comprobación rápida de limpieza en Postman: `Simulator › Desactivar todos los escenarios (limpieza)`, o (opcional, con `curl` contra la URL pública):
 
 ```bash
+BASE_URL='https://<TU-TUNNEL>.trycloudflare.com/api/v1'
 curl -X PATCH -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
   -d '{"slowResponse":false,"timeout":false,"temporary503":false,"sessionExpired":false,
        "insufficientPermission":false,"emptyList":false,"largeVolume":false,
        "concurrentEdit":false,"rateLimit":false,"invalidFile":false,"duplicateOrder":false,
        "failedAsyncJob":false}' \
-  http://localhost:3100/api/v1/spaces/me/scenarios
+  "$BASE_URL/spaces/me/scenarios"
 ```
 
 ---
@@ -282,8 +281,8 @@ Marca antes de entregar:
 - [ ] **`version` para conflictos:** todo `PATCH` de productos, notas, categorías y tareas la incluye; `409 VERSION_CONFLICT` se recarga y se reintenta una vez.
 - [ ] **`x-space-id` no es autenticación:** separa datos; el token decide identidad y roles.
 - [ ] **No exponer tokens:** ni en logs, ni capturas, ni README, ni archivos entregados; limpia `email`/`password` del environment antes de compartirlo.
-- [ ] **Mailpit solo localhost:** `http://127.0.0.1:8025`; no lo expongas a la red ni lo confundas con la API.
-- [ ] **Puerto 3100:** API en `http://localhost:3100/api/v1`, health en `http://localhost:3100/health/...`, Swagger en `http://localhost:3100/docs`.
+- [ ] **Correos propios, sin UI de Mailpit:** abre `{{hostUrl}}/portal` → *Mis correos de prueba* (`GET {{baseUrl}}/mail/me`). La UI de Mailpit queda en el anfitrión y no se expone.
+- [ ] **URL pública vigente:** usa la que te dio el profesor (cambia en cada ejecución); API en `{{baseUrl}}`, health en `{{hostUrl}}/health/...`, Swagger en `{{hostUrl}}/docs`. Si eres el anfitrión, tu puerto local por defecto es `3100`, pero nunca lo compartas como URL de estudiante.
 - [ ] **Demo pública es solo lectura:** sin `x-space-id`, escribir responde `403 DEMO_READ_ONLY`.
 - [ ] **Escenarios limpios:** desactivaste todos los del simulador al terminar.
 - [ ] **Etapa 4:** conecta el socket por `/socket.io` con el access token, guarda `lastEventId` para el replay y desactiva `failedAsyncJob` al terminar.
@@ -294,7 +293,7 @@ Marca antes de entregar:
 
 Entrega un paquete con:
 
-1. **Código del cliente** (web/Android/iOS/escritorio) con un `README.md` propio: requisitos, arranque, puerto 3100 y credenciales de desarrollo (sin secretos reales).
+1. **Código del cliente** (web/Android/iOS/escritorio) con un `README.md` propio: requisitos, arranque, la URL pública utilizada y credenciales de práctica (sin secretos reales). Si eres el anfitrión y documentas tu entorno local, etiquétalo como tal (`APP_HOST_PORT` / puerto 3100).
 2. **Capturas** de los flujos principales: catálogo paginado, CRUD en sandbox, login/refresh/perfil, notas, tareas, archivos, roles y al menos un error con `requestId` visible.
 3. **Logs** de `curl -i` o de la consola del cliente para: `201`, `204`, `404`, `422`, `409`, `429` y `503`. Incluye la cabecera `Retry-After` en el `429`.
 4. **Evidencia de aislamiento**, que es la comprobación más importante. Entrega:
