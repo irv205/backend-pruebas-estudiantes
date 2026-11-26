@@ -211,7 +211,6 @@ Estos endpoints **ya existen** (Etapa 3, disponibles en `/docs`). Requieren `Aut
 
 - [C6.1 — WebSockets, chat y notificaciones](./challenges/level-6/c6-1-websockets-chat-y-notificaciones.md)
 - [C6.2 — Exportaciones asíncronas](./challenges/level-6/c6-2-exportaciones-asincronas.md)
-- [PROYECTO_FINAL — Proyecto final sugerido](./challenges/proyecto-final/proyecto-final.md)
 
 ---
 

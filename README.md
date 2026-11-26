@@ -218,7 +218,7 @@ Los scripts canónicos están en `scripts/`; en la raíz hay wrappers bash para 
 | Ver logs | `docker compose logs -f app` | `docker compose logs --tail=100 migrate` (migraciones), `worker` (exports) o `redis` (cola) |
 | Ver estado | `docker compose ps` | Incluye `migrate` (`Exited(0)` = OK), `redis` (*healthy*) y `worker` (*up*) |
 
-`start.sh` localiza la raíz del proyecto desde su ubicación, lee `APP_HOST_PORT` de `.env` (default `3000`), avisa si el puerto está ocupado por un contenedor ajeno **sin detenerlo**, ejecuta `docker compose up -d --build`, espera a que `migrate` termine con código 0 y a que `GET /health/ready` responda 200 (60 s cada espera), y aplica el seed idempotente. La opción `--no-seed` omite el seed. Al terminar imprime las URLs reales con el puerto configurado y, en terminal interactiva, pregunta si quieres abrir el túnel público (se omite sin TTY o con `SKIP_TUNNEL_PROMPT=1`/`SKIP_PUBLIC_URL=1`). Si aceptas, reutiliza `scripts/start-with-public-url.mjs` en modo `--tunnel-only` con `PORT=$APP_HOST_PORT`: no recompila, no levanta otro backend y no repite la pregunta. `Ctrl+C` cierra el túnel sin detener Docker.
+`start.sh` localiza la raíz del proyecto desde su ubicación, lee `APP_HOST_PORT` de `.env` (default `3000`), avisa si el puerto está ocupado por un contenedor ajeno **sin detenerlo**, ejecuta `docker compose up -d --build`, espera a que `migrate` termine con código 0 y a que `GET /health/ready` responda 200 (60 s cada espera), y aplica el seed idempotente. La opción `--no-seed` omite el seed. Al terminar imprime las URLs reales con el puerto configurado y, en terminal interactiva, ofrece abrir el túnel público. En ejecuciones no interactivas (sin TTY, p. ej. CI) y con las variables de omisión (`SKIP_TUNNEL_PROMPT=1`, `SKIP_PUBLIC_URL_PROMPT=1`, `SKIP_PUBLIC_URL=1` y sus alias) **no se hace la pregunta ni se abre el túnel**: se imprime el comando manual para abrirlo después. Si aceptas, reutiliza `scripts/start-with-public-url.mjs` en modo `--tunnel-only` con `PORT=$APP_HOST_PORT`: no recompila, no levanta otro backend y no repite la pregunta. `Ctrl+C` cierra el túnel sin detener Docker.
 
 `stop.sh` ejecuta `docker compose down` **sin `-v`**: los volúmenes `postgres_data`, `redis_data`, `mailpit_data` y `files_data` se conservan, así como `minio_data` (reservado). No acepta opciones que borren datos (p. ej. `-v` o `--volumes`). `restart.sh` encadena el apagado y el arranque, reenviando argumentos como `--no-seed`.
 
@@ -635,7 +635,7 @@ Los datos siguen en los volúmenes Docker de tu máquina (`postgres_data`, `mail
 - No compartas correos reales, contraseñas ni tokens en capturas o logs, y no subas `.env`, tokens ni config de cloudflared a Git (`.env` ya está gitignored).
 - **No apto para producción** ni datos sensibles. Cloudflare puede limitar o cerrar túneles sin aviso.
 - El backend corre en tu máquina: si la apagas o cierras la terminal, la URL deja de funcionar.
-- En entornos sin TTY (CI/Docker) la pregunta se omite y `start.sh` imprime el comando manual. Para forzar el túnel sin pregunta usa `PUBLIC_URL_AUTO=1`.
+- En entornos sin TTY (CI/Docker) no se ofrece ni abre el túnel y `start.sh` imprime el comando manual. Para forzar el túnel sin pregunta usa `PUBLIC_URL_AUTO=1`.
 - No se instala `cloudflared` automáticamente: si falta, se muestran las instrucciones de instalación y el arranque termina sin error.
 
 ### Variables de entorno del script
@@ -644,7 +644,7 @@ Los datos siguen en los volúmenes Docker de tu máquina (`postgres_data`, `mail
 |---|---|
 | `PUBLIC_URL_AUTO=1` / `CLOUDFLARE_TUNNEL_AUTO=1` / `START_WITH_PUBLIC_URL=1` | Genera el túnel sin preguntar (también en `./start.sh`). |
 | `SKIP_PUBLIC_URL=1` / `NO_PUBLIC_URL=1` / `PUBLIC_URL=0` | No crea túnel ni pregunta. |
-| `SKIP_TUNNEL_PROMPT=1` / `SKIP_PUBLIC_URL_PROMPT=1` | Nueva: omite solo la pregunta de `./start.sh` (útil en CI); imprime el comando manual. |
+| `SKIP_TUNNEL_PROMPT=1` / `SKIP_PUBLIC_URL_PROMPT=1` | Igual que `SKIP_PUBLIC_URL`: `./start.sh` no ofrece ni abre el túnel (útil en CI); imprime el comando manual para abrirlo después. |
 | `PORT` | Puerto del backend en modo directo (default 3000). Distinto de `APP_HOST_PORT`. |
 | `TUNNEL_ONLY=1` / `--tunnel-only` | Modo interno usado por `./start.sh`: no compila ni arranca backend, solo abre el túnel en `PORT`. |
 | `READY_TIMEOUT_MS` | Espera máxima a `/health/ready` en el script (default 60000). |
