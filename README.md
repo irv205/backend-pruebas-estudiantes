@@ -2,7 +2,7 @@
 
 API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL**, ejecutada con **Docker Compose**. La Etapa 2 añade **categorías, archivos, tareas, roles de equipo y simulador**; la Etapa 3, **carrito, pedidos transaccionales, pagos simulados e idempotencia**; la Etapa 4 añade **notificaciones, WebSocket/chat con replay, exportaciones asíncronas (Redis/BullMQ + worker) y login web con cookies HttpOnly + CSRF**. El **portal del estudiante** (`http://localhost:3100/portal`) es una UI vanilla servida por la propia aplicación y reutiliza esos endpoints.
 
-> **Persistencia: código vs datos.** El código fuente vive en este repositorio Git (`.gitignore` excluye `node_modules`, `dist`, `.env` y backups; `.gitattributes` fuerza `eol=lf` en `*.sh`/`*.bash` y `eol=crlf` en `*.ps1`/`*.cmd`). Docker guarda la **ejecución** y los **datos**: PostgreSQL, Redis, Mailpit y el almacenamiento de archivos usan **volúmenes nombrados** (`postgres_data`, `redis_data`, `mailpit_data`, `files_data` y `minio_data`, reservado). Borrar contenedores no borra volúmenes.
+> **Persistencia: código vs datos.** El código fuente vive en este repositorio Git (`.gitignore` excluye `node_modules`, `dist`, `.env` y backups; `.gitattributes` fuerza `eol=lf` en `*.sh`/`*.bash`). Docker guarda la **ejecución** y los **datos**: PostgreSQL, Redis, Mailpit y el almacenamiento de archivos usan **volúmenes nombrados** (`postgres_data`, `redis_data`, `mailpit_data`, `files_data` y `minio_data`, reservado). Borrar contenedores no borra volúmenes.
 
 ## Guías
 
@@ -30,62 +30,40 @@ Se prefirió una imagen fijada y verificable, pero **no fue verificable desde es
 
 Por ello el servicio **queda comentado** en `docker-compose.yml`, con el comando exacto de activación y nota. La API de archivos funciona igual con `FILES_STORAGE=local` (volumen `files_data`), y las pruebas usan un **stub del cliente S3**, así que CI no depende de MinIO. Ver la sección [Archivos](#archivos-y-avatares).
 
-## Instalación (guía reproducible en cualquier computadora)
+## Instalación (guía reproducible en macOS / Linux)
 
-Sigue estos pasos **en orden** en Windows, macOS o Linux. Todos los comandos se ejecutan desde una terminal situada en la carpeta del proyecto. Si algo falla, salta a [Solución de problemas](#solución-de-problemas).
+Sigue estos pasos **en orden** en macOS o Linux. Todos los comandos se ejecutan desde una terminal bash situada en la carpeta del proyecto. Si algo falla, salta a [Solución de problemas](#solución-de-problemas).
 
 ### Instalación automática
 
 El instalador ejecuta estos pasos por ti (raíz del proyecto, requisitos, `.env`, puerto, `docker compose config` y arranque), e imprime un resumen final con las URLs reales.
 
-**Windows ya no necesita Git Bash ni WSL para ninguna etapa del ciclo de vida** (instalar, arrancar, detener o reiniciar). Todo se hace con PowerShell nativo o con los wrappers `.cmd` para `cmd.exe` / doble clic. Git sigue siendo necesario para clonar y verificar que `.env` está ignorado, pero **no se invoca `bash`**.
-
-```powershell
-# Windows PowerShell (nativo, sin bash)
-git clone <URL>; cd <REPO>; .\install.ps1
-```
-
-```cmd
-:: Windows: alternativa para cmd.exe / doble clic
-install.cmd
-```
-
 ```bash
-# macOS / Linux (bash)
 git clone <URL> && cd <REPO> && ./install.sh
 ```
 
-Sustituye `<URL>` y `<REPO>` por tu repositorio real (son marcadores de posición). Si ya tienes el código, ejecuta desde la raíz `.\install.ps1` / `.\install.cmd` (Windows) o `./install.sh` (macOS/Linux); también `npm run project:install:win` en Windows y `npm run project:install` en macOS/Linux.
+Sustituye `<URL>` y `<REPO>` por tu repositorio real (son marcadores de posición). Si ya tienes el código, ejecuta desde la raíz `./install.sh` o `npm run project:install`.
 
-| Opción (bash / PowerShell) | Efecto |
+| Opción | Efecto |
 |---|---|
-| `--no-seed` / `-NoSeed` | Omite el seed (se reenvía al script de arranque). |
-| `--yes`, `--non-interactive` / `-Yes`, `-NonInteractive` | Acepta defaults; **no** sobrescribe un `.env` existente. |
-| `--repo-url URL` / `-RepoUrl URL` | Repositorio a clonar si no se está en la raíz (también `REPO_URL`). |
-| `--target DIR` / `-Target DIR` | Directorio destino del clon. |
-| `--install-deps` / `-InstallDeps` | Permite intentar instalar dependencias del sistema **solo tras confirmación explícita**; `-Yes` **no** la otorga. |
-| `-h`, `--help` / `-Help` | Muestra la ayuda. |
+| `--no-seed` | Omite el seed (se reenvía al script de arranque). |
+| `--yes`, `--non-interactive` | Acepta defaults; **no** sobrescribe un `.env` existente. |
+| `--repo-url URL` | Repositorio a clonar si no se está en la raíz (también `REPO_URL`). |
+| `--target DIR` | Directorio destino del clon. |
+| `--install-deps` | Permite intentar instalar dependencias del sistema **solo tras confirmación explícita**; `--yes` **no** la otorga. |
+| `-h`, `--help` | Muestra la ayuda. |
 
-> El instalador **no sube nada a GitHub** (no configura remote ni hace push) y **no instala dependencias del sistema sin confirmación**; `--yes`/`-Yes` tampoco autoriza esa instalación. En Windows el arranque usa `scripts/start.ps1` (PowerShell puro): espera a `migrate` con `docker inspect` y comprueba `/health/ready` con `Invoke-WebRequest`, sin `curl` ni `bash`. La guía manual detallada sigue a continuación.
-
-### Ciclo de vida Windows (resumen)
-
-Sin Git Bash ni WSL: cada acción tiene su script PowerShell, su wrapper `.cmd` y su script npm.
-
-- **Instalar:** `.\install.ps1` / `install.cmd` / `npm run project:install:win`
-- **Arrancar:** `.\start.ps1` / `start.cmd` / `npm run project:start:win`
-- **Detener:** `.\stop.ps1` / `stop.cmd` / `npm run project:stop:win`
-- **Reiniciar sin seed:** `.\restart.ps1 -NoSeed` / `restart.cmd -NoSeed` / `npm run project:restart:win -- -NoSeed`
+> El instalador **no sube nada a GitHub** (no configura remote ni hace push) y **no instala dependencias del sistema sin confirmación**; `--yes` tampoco autoriza esa instalación. La guía manual detallada sigue a continuación.
 
 ### 1. Requisitos previos
 
-| Requisito | Windows / macOS | Linux | Cómo comprobarlo |
+| Requisito | macOS | Linux | Cómo comprobarlo |
 |---|---|---|---|
-| Docker | **Docker Desktop** (con el motor arrancado) | **Docker Engine 29+** y el plugin **Docker Compose v5+** (`docker compose`, con espacio; no el `docker-compose` clásico) | `docker --version` y `docker compose version` |
-| Git | Git for Windows / Git instalado | Git del sistema | `git --version` |
+| Docker | **Docker Desktop for Mac** (con el motor arrancado) | **Docker Engine 29+** y el plugin **Docker Compose v5+** (`docker compose`, con espacio; no el `docker-compose` clásico) | `docker --version` y `docker compose version` |
+| Git | Git del sistema (Xcode Command Line Tools o Homebrew) | Git del sistema | `git --version` |
 | Node.js y npm | **Solo si vas a trabajar fuera de Docker**: Node `20.18.1` (ver `.nvmrc`; `engines: >=20.18.1 <21`) y npm | Igual | `node --version` → `v20.18.1` |
-| `curl` | Opcional (en PowerShell usa `Invoke-WebRequest`) | Opcional | `curl --version` |
-| Puertos | **3100** (API) y **8025** (Mailpit) libres en el host | Igual | `docker ps` / `lsof -i :3100` (macOS/Linux) |
+| `curl` | Opcional | Opcional | `curl --version` |
+| Puertos | **3100** (API) y **8025** (Mailpit) libres en el host | Igual | `docker ps` / `lsof -i :3100` |
 
 > No necesitas instalar PostgreSQL, Prisma ni Node dentro de Docker: las imágenes ya los traen. El contenedor siempre escucha en `3000`; el host publica `APP_HOST_PORT` (por defecto `3100`).
 
@@ -101,11 +79,7 @@ Sustituye `<TU-USUARIO>` y `<REPO>` por tu usuario y nombre de repositorio reale
 ### 3. Configurar el entorno
 
 ```bash
-cp .env.example .env                 # macOS / Linux
-```
-
-```powershell
-Copy-Item .env.example .env          # PowerShell en Windows
+cp .env.example .env
 ```
 
 Reglas importantes:
@@ -119,21 +93,13 @@ Reglas importantes:
 
 Forma recomendada (espera a migraciones, healthcheck y seed idempotente automáticamente):
 
-```powershell
-# Windows (PowerShell nativo, sin bash)
-.\start.ps1
-# o: .\start.cmd   |   npm run project:start:win
-```
-
 ```bash
-# macOS / Linux
 ./start.sh
 # o: npm run project:start
 ```
 
-- **Windows:** no necesitas Git Bash ni WSL; `start.ps1` hace lo mismo que `start.sh` usando Docker Compose, `docker inspect` e `Invoke-WebRequest`.
-- **macOS/Linux:** los scripts `.sh` funcionan tal cual (`.gitattributes` garantiza finales de línea LF).
-- Alternativa manual en cualquier sistema: `docker compose up -d --build`, esperar a `migrate` con `docker compose logs -f migrate` y ejecutar `docker compose exec -T app npm run prisma:seed`.
+- Los scripts `.sh` funcionan tal cual en macOS/Linux (`.gitattributes` garantiza finales de línea LF).
+- Alternativa manual: `docker compose up -d --build`, esperar a `migrate` con `docker compose logs -f migrate` y ejecutar `docker compose exec -T app npm run prisma:seed`.
 
 `docker compose` espera a PostgreSQL y Redis *healthy* (Redis es opcional con `JOBS_QUEUE_MODE=inline`), ejecuta las migraciones (`migrate`, una sola vez) y solo después arranca la API y el `worker`. El código se monta desde el host y `start:dev` recarga cambios; `node_modules` vive en un volumen anónimo separado. Con `docker compose ps` deben aparecer `postgres`, `redis`, `mailpit`, `migrate` (`Exited(0)`), `app` (*healthy*) y `worker` (*up*, sin puerto HTTP). El seed es **idempotente** (IDs/slugs fijos + `upsert`): incluye la demo pública (8 productos en 3 categorías), el espacio personal (3 categorías, 2 productos, 2 notas y 3 tareas con subtareas) y el usuario de prueba. Repetirlo no duplica nada.
 
@@ -142,12 +108,6 @@ Forma recomendada (espera a migraciones, healthcheck y seed idempotente automát
 ```bash
 curl -i http://localhost:3100/health/ready        # espera 200
 curl -i 'http://localhost:3100/api/v1/public/products?page=1&limit=20'
-```
-
-En PowerShell:
-
-```powershell
-Invoke-WebRequest http://localhost:3100/health/ready | Select-Object StatusCode
 ```
 
 Comprueba también:
@@ -166,13 +126,6 @@ TOKEN=$(curl -s -H 'Content-Type: application/json' \
   http://localhost:3100/api/v1/auth/login | jq -r .data.tokens.accessToken)
 
 curl -H "Authorization: Bearer $TOKEN" http://localhost:3100/api/v1/users/me
-```
-
-```powershell
-$body = '{"email":"estudiante@practicas.local","password":"Estudiante.123"}'
-$login = Invoke-RestMethod -Uri http://localhost:3100/api/v1/auth/login -Method Post -ContentType 'application/json' -Body $body
-$token = $login.data.tokens.accessToken
-Invoke-RestMethod -Uri http://localhost:3100/api/v1/users/me -Headers @{ Authorization = "Bearer $token" }
 ```
 
 ### URLs y usuario de prueba
@@ -236,25 +189,25 @@ Endpoints nuevos del portal (todos requieren `Authorization: Bearer <accessToken
 
 ## Uso diario y ciclo de vida
 
-Los scripts canónicos están en `scripts/`; en la raíz hay wrappers para ejecutarlos directamente. Windows usa los `.ps1` (o los `.cmd` con doble clic) y **no necesita Git Bash ni WSL**.
+Los scripts canónicos están en `scripts/`; en la raíz hay wrappers bash para ejecutarlos directamente (macOS/Linux).
 
-| Acción | bash (macOS / Linux) | Windows nativo (PowerShell / .cmd) | npm |
-|---|---|---|---|
-| Arrancar (con seed) | `./start.sh` | `.\start.ps1` o `.\start.cmd` | `npm run project:start` / `npm run project:start:win` |
-| Detener (sin borrar volúmenes) | `./stop.sh` | `.\stop.ps1` o `.\stop.cmd` | `npm run project:stop` / `npm run project:stop:win` |
-| Reiniciar sin seed | `./restart.sh --no-seed` | `.\restart.ps1 -NoSeed` o `.\restart.cmd -NoSeed` | `npm run project:restart -- --no-seed` / `npm run project:restart:win -- -NoSeed` |
-| Instalar | `./install.sh` | `.\install.ps1` o `.\install.cmd` | `npm run project:install` / `npm run project:install:win` |
-| Aplicar migraciones | `docker compose exec app npm run prisma:migrate` | Igual | `npm run prisma:migrate` si trabajas fuera de Docker |
-| Seed idempotente | `docker compose exec app npm run prisma:seed` | Igual | `npm run prisma:seed` fuera de Docker |
-| Regenerar cliente Prisma | `docker compose exec app npm run prisma:generate` | Igual | Tras editar `prisma/schema.prisma` |
-| Pruebas unitarias | `docker compose exec app npm test` | Igual | `npm test` con Node 20.18.1 en el host |
-| Pruebas e2e (`practicas_test`) | Ver [Ejecutar pruebas](#ejecutar-pruebas) | Igual; **nunca** contra la BD de estudiantes | Igual |
-| Ver logs | `docker compose logs -f app` | Igual | `docker compose logs --tail=100 migrate` (migraciones), `worker` (exports) o `redis` (cola) |
-| Ver estado | `docker compose ps` | Igual | Incluye `migrate` (`Exited(0)` = OK), `redis` (*healthy*) y `worker` (*up*) |
+| Acción | bash (macOS / Linux) | npm |
+|---|---|---|
+| Arrancar (con seed) | `./start.sh` | `npm run project:start` |
+| Detener (sin borrar volúmenes) | `./stop.sh` | `npm run project:stop` |
+| Reiniciar sin seed | `./restart.sh --no-seed` | `npm run project:restart -- --no-seed` |
+| Instalar | `./install.sh` | `npm run project:install` |
+| Aplicar migraciones | `docker compose exec app npm run prisma:migrate` | `npm run prisma:migrate` si trabajas fuera de Docker |
+| Seed idempotente | `docker compose exec app npm run prisma:seed` | `npm run prisma:seed` fuera de Docker |
+| Regenerar cliente Prisma | `docker compose exec app npm run prisma:generate` | Tras editar `prisma/schema.prisma` |
+| Pruebas unitarias | `docker compose exec app npm test` | `npm test` con Node 20.18.1 en el host |
+| Pruebas e2e (`practicas_test`) | Ver [Ejecutar pruebas](#ejecutar-pruebas); **nunca** contra la BD de estudiantes | Igual |
+| Ver logs | `docker compose logs -f app` | `docker compose logs --tail=100 migrate` (migraciones), `worker` (exports) o `redis` (cola) |
+| Ver estado | `docker compose ps` | Incluye `migrate` (`Exited(0)` = OK), `redis` (*healthy*) y `worker` (*up*) |
 
-`start.sh` / `start.ps1` localizan la raíz del proyecto desde su ubicación, leen `APP_HOST_PORT` de `.env` (default `3000`), avisan si el puerto está ocupado por un contenedor ajeno **sin detenerlo**, ejecutan `docker compose up -d --build`, esperan a que `migrate` termine con código 0 y a que `GET /health/ready` responda 200 (60 s cada espera), y aplican el seed idempotente. La opción `--no-seed` / `-NoSeed` omite el seed. Al terminar imprimen las URLs reales con el puerto configurado. La versión de Windows usa `Invoke-WebRequest` en lugar de `curl`.
+`start.sh` localiza la raíz del proyecto desde su ubicación, lee `APP_HOST_PORT` de `.env` (default `3000`), avisa si el puerto está ocupado por un contenedor ajeno **sin detenerlo**, ejecuta `docker compose up -d --build`, espera a que `migrate` termine con código 0 y a que `GET /health/ready` responda 200 (60 s cada espera), y aplica el seed idempotente. La opción `--no-seed` omite el seed. Al terminar imprime las URLs reales con el puerto configurado.
 
-`stop.sh` / `stop.ps1` ejecutan `docker compose down` **sin `-v`**: los volúmenes `postgres_data`, `redis_data`, `mailpit_data` y `files_data` se conservan, así como `minio_data` (reservado). No aceptan opciones que borren datos (p. ej. `-v`, `--volumes`, `-Volumes` o `-V`). `restart.sh` / `restart.ps1` encadenan el apagado y el arranque, reenviando argumentos como `--no-seed` / `-NoSeed`.
+`stop.sh` ejecuta `docker compose down` **sin `-v`**: los volúmenes `postgres_data`, `redis_data`, `mailpit_data` y `files_data` se conservan, así como `minio_data` (reservado). No acepta opciones que borren datos (p. ej. `-v` o `--volumes`). `restart.sh` encadena el apagado y el arranque, reenviando argumentos como `--no-seed`.
 
 El puerto publicado se controla únicamente con `APP_HOST_PORT` en `.env` (en este entorno, `3100` porque el `3000` lo ocupa otro proyecto).
 
@@ -661,8 +614,7 @@ Variables de entorno útiles:
 | `npm` se queja de la versión de Node en el host (EBADENGINE) o `nest: not found` | Node del host fuera de rango (p. ej. Node 25) | Usa Docker, o `nvm use` (lee `.nvmrc` → `20.18.1`). El rango soportado es `>=20.18.1 <21`. |
 | `/health/ready` no devuelve 200 | Primera vez que arranca o la app cayó | Espera unos segundos; revisa `docker compose logs --tail=100 app` y `docker compose ps`. El healthcheck comprueba PostgreSQL, **no** Redis. Para verificar Redis: `docker compose exec redis redis-cli ping` (debe devolver `PONG`) o `docker compose ps redis`. |
 | `redis` no está *healthy* o el arranque espera a Redis | Imagen caída o `REDIS_URL` mal escrita (debe ser `redis://redis:6379` dentro de Compose) | Revisa `docker compose logs --tail=100 redis` y `docker compose config`. Si solo quieres probar la API sin cola, pon `JOBS_QUEUE_MODE=inline` en `.env`: `depends_on` de Redis es `required: false` y la app arranca igual. |
-| Mensaje `$'\r': command not found` al ejecutar `./start.sh` en Windows | Finales de línea CRLF | El repo incluye `.gitattributes` con `eol=lf` para `*.sh` (y `eol=crlf` para `*.ps1`/`*.cmd`); vuelve a clonar o normaliza con `git add --renormalize .`. Mejor: usa `.\start.ps1`, que no depende de bash. |
-| `curl` no existe en Windows | No viene instalado por defecto | Usa el equivalente con `Invoke-WebRequest` / `Invoke-RestMethod` mostrado arriba, o instala curl. |
+| Mensaje `$'\r': command not found` al ejecutar `./start.sh` | Finales de línea CRLF en el checkout | El repo incluye `.gitattributes` con `eol=lf` para `*.sh`; vuelve a clonar o normaliza con `git add --renormalize .`. |
 | No aparece MinIO / errores al activar `FILES_STORAGE=s3` | El servicio está **comentado** a propósito (imagen no verificable desde el entorno original) | No es un fallo: con `FILES_STORAGE=local` los archivos van al volumen `files_data` y las pruebas usan un stub. Solo descomenta MinIO si verificas el tag y configuras `MINIO_ROOT_*` y `S3_*`. |
 | Los export jobs se quedan en `PENDING` | Modo `redis` sin worker, Redis caído o `WORKER_MODE` no fijado | `docker compose ps` y `docker compose logs --tail=100 worker`; debe aparecer `Worker BullMQ escuchando exports`. Para pruebas sin Redis usa `JOBS_QUEUE_MODE=inline`. |
 | El worker se reinicia en bucle con `exit 0` | `WORKER_MODE` no llegó al contenedor (ConfigModule valida antes del `main`) | Verifica que el servicio `worker` de `docker-compose.yml` incluya `WORKER_MODE: "true"` y reinícialo. |
@@ -775,15 +727,11 @@ backendPruebas/
 ├── propuesta_backend_estudiantes.md
 ├── .env.example                    plantilla VERSIONADA (placeholders)
 ├── .env                            local, NUNCA versionado (ignorado por Git)
-├── .gitignore, .gitattributes      ignorados; eol=lf para *.sh, eol=crlf para *.ps1/*.cmd
+├── .gitignore, .gitattributes      ignorados; eol=lf para *.sh y *.bash
 ├── docker-compose.yml, Dockerfile  app, worker, postgres, redis, mailpit, migrate (MinIO comentado)
 ├── install.sh, start.sh,           wrappers bash en la raíz (macOS / Linux)
 │   stop.sh, restart.sh
-├── install.ps1, start.ps1,         wrappers PowerShell en la raíz (Windows nativo)
-│   stop.ps1, restart.ps1
-├── install.cmd, start.cmd,         wrappers cmd.exe / doble clic (Windows)
-│   stop.cmd, restart.cmd
-├── scripts/                        lógica del ciclo de vida (.sh y .ps1)
+├── scripts/                        lógica del ciclo de vida (.sh) y script opcional de URL pública (.mjs)
 ├── src/                            código NestJS (detalle abajo)
 ├── prisma/                         schema.prisma, migrations/, seed.ts
 ├── test/                           suites e2e y utilidades

@@ -28,11 +28,7 @@
     "project:install": "bash scripts/install.sh",
     "project:start": "bash scripts/start.sh",
     "project:stop": "bash scripts/stop.sh",
-    "project:restart": "bash scripts/restart.sh",
-    "project:install:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\install.ps1",
-    "project:start:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\start.ps1",
-    "project:stop:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\stop.ps1",
-    "project:restart:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\restart.ps1"
+    "project:restart": "bash scripts/restart.sh"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

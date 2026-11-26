@@ -1,11 +1,8 @@
-# Fin de línea deliberado: los scripts Unix (*.sh, *.bash) usan LF y los scripts Windows (*.ps1, *.cmd) usan CRLF.
+# Fin de línea deliberado: los scripts bash (*.sh, *.bash) usan LF.
 * text=auto
 
 *.sh text eol=lf
 *.bash text eol=lf
-# Scripts nativos de Windows: CRLF en el checkout (cmd.exe y PowerShell lo aceptan).
-*.ps1 text eol=crlf
-*.cmd text eol=crlf
 *.env.example text eol=lf
 *.md text eol=lf
 *.yml text eol=lf
