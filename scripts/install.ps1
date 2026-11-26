@@ -1,8 +1,8 @@
 ﻿#requires -Version 5.1
 <#
   Instalador guiado del backend de práctica para Windows PowerShell.
-  Reutiliza scripts/start.sh (a través de Git Bash): NO duplica la lógica de
-  migraciones, healthcheck ni seed.
+  100% nativo: el arranque usa scripts/start.ps1 (NO reutiliza start.sh).
+  No modifica lógica de negocio, migraciones ni seed.
 #>
 param(
   [string]$RepoUrl = $env:REPO_URL,
@@ -11,9 +11,7 @@ param(
   [switch]$Yes,
   [switch]$NonInteractive,
   [switch]$InstallDeps,
-  [switch]$Help,
-  [Parameter(ValueFromRemainingArguments = $true)]
-  [string[]]$Rest = @()
+  [switch]$Help
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,24 +25,26 @@ function Show-Help {
   Write-Host @'
 Uso: .\install.ps1 [opciones]
 
-Instala y arranca el backend de práctica con Docker Compose.
+Instala y arranca el backend de práctica con Docker Compose, usando SOLO
+PowerShell nativo: NO necesitas Git Bash ni WSL para el ciclo de vida.
 
 Opciones:
-  -NoSeed               No ejecuta el seed (se reenvía a scripts/start.sh).
+  -NoSeed               No ejecuta el seed (se reenvía a scripts/start.ps1).
   -Yes, -NonInteractive Acepta defaults; NO sobrescribe un .env existente.
   -RepoUrl URL          Repositorio a clonar si no estamos en la raíz.
                         También se lee la variable de entorno REPO_URL.
   -Target DIR           Directorio destino del clon.
   -InstallDeps          Permite intentar instalar dependencias del sistema
-                        SOLO tras confirmación explícita.
+                        SOLO tras confirmación explícita (-Yes NO la otorga).
   -Help                 Muestra esta ayuda.
 
 También se aceptan las formas --no-seed, --yes, --non-interactive,
 --repo-url URL, --target DIR, --install-deps y --help.
 
-Requiere Git Bash (viene con Git for Windows) o WSL porque el arranque
-reutiliza scripts/start.sh. El instalador NO hace push ni configura remotos,
-y NO instala paquetes del sistema sin confirmación explícita.
+Sin bash: el arranque, la espera de migraciones y el healthcheck los hace
+scripts/start.ps1 con Invoke-WebRequest. Git sigue siendo necesario para
+clonar y comprobar que .env está ignorado, pero NO se usa su bash.
+El instalador NO hace push ni configura remotos.
 '@
 }
 
@@ -70,23 +70,20 @@ function Get-OsName {
 function Print-DepsInstructions {
   param([string]$Os)
   Write-Host "`nInstrucciones para instalar los requisitos:" -ForegroundColor Yellow
-  Write-Host "  - Git / Git Bash: https://git-scm.com/downloads"
+  Write-Host '  - Git: https://git-scm.com/downloads (en Windows: Git for Windows; NO necesitas su bash).'
   if ($Os -eq 'Windows') {
     Write-Host '  - Docker Desktop for Windows: https://docs.docker.com/desktop/install/windows-install/'
     Write-Host '    Tras instalarlo, arranca el motor (icono de Docker en la bandeja).'
-    Write-Host '  - Git for Windows aporta el bash que necesita scripts/start.sh.'
   } elseif ($Os -eq 'macOS') {
     Write-Host '  - Docker Desktop para Mac: https://docs.docker.com/desktop/install/mac-install/'
     Write-Host '    (o: brew install --cask docker; abre la app hasta que el motor arranque).'
-    Write-Host '  - curl: viene incluido en macOS.'
   } elseif ($Os -eq 'Linux') {
     Write-Host '  - Docker Engine + plugin Compose: https://docs.docker.com/engine/install/'
     Write-Host '    Verifica con: docker --version ; docker compose version'
-    Write-Host '  - curl: p. ej. sudo apt-get install curl  o  sudo dnf install curl'
   } else {
     Write-Host '  - Docker: https://docs.docker.com/get-docker/ (incluye Compose).'
   }
-  Write-Host 'Después vuelve a ejecutar: .\install.ps1 (o ./install.sh).'
+  Write-Host 'Después vuelve a ejecutar: .\install.ps1'
 }
 
 function Get-EnvValue {
@@ -126,7 +123,7 @@ function Set-EnvValues {
 
   $backup = Join-Path (Get-Location).Path '.env.bak'
   Copy-Item -LiteralPath $path -Destination $backup -Force
-  # Sin BOM: docker compose no debe ver un caracter extra antes de la primera clave.
+  # Sin BOM: docker compose no debe ver un carácter extra antes de la primera clave.
   [System.IO.File]::WriteAllLines($path, $result, (New-Object System.Text.UTF8Encoding($false)))
   Remove-Item -LiteralPath $backup -Force
 }
@@ -157,20 +154,6 @@ function Test-PortBusy {
   return $false
 }
 
-function Get-BashPath {
-  $cmd = Get-Command bash -ErrorAction SilentlyContinue
-  if ($cmd) { return $cmd.Source }
-  $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-  $candidates = @()
-  if ($env:ProgramFiles) { $candidates += (Join-Path $env:ProgramFiles 'Git\bin\bash.exe') }
-  if ($pf86) { $candidates += (Join-Path $pf86 'Git\bin\bash.exe') }
-  if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA 'Programs\Git\bin\bash.exe') }
-  foreach ($candidate in $candidates) {
-    if (Test-Path -LiteralPath $candidate) { return $candidate }
-  }
-  return $null
-}
-
 function Invoke-QuietNative {
   param([string[]]$Arguments)
   $previous = $ErrorActionPreference
@@ -186,21 +169,40 @@ function Invoke-QuietNative {
   }
 }
 
-# Aceptar también opciones estilo -- para quien copia comandos de la guía bash.
-for ($i = 0; $i -lt $Rest.Count; $i++) {
-  $arg = $Rest[$i]
+# Muestra la salida del comando y devuelve su código (evita lanzar errores
+# terminantes por códigos no cero en PowerShell 7.3+).
+function Invoke-NativeVisible {
+  param([string[]]$Arguments)
+  $previous = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $exe = $Arguments[0]
+    $restArgs = @()
+    if ($Arguments.Count -gt 1) { $restArgs = $Arguments[1..($Arguments.Count - 1)] }
+    # Out-Host evita que la salida del comando se capture junto al código.
+    & $exe @restArgs | Out-Host
+    $code = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previous
+  }
+  return $code
+}
+
+# Opciones estilo -- llegan en $args (script simple: no se usa binder avanzado).
+for ($i = 0; $i -lt $args.Count; $i++) {
+  $arg = $args[$i]
   if ($arg -eq '--yes' -or $arg -eq '--non-interactive') { $Yes = $true }
   elseif ($arg -eq '--no-seed') { $NoSeed = $true }
   elseif ($arg -eq '--install-deps') { $InstallDeps = $true }
   elseif ($arg -eq '--help' -or $arg -eq '-h') { $Help = $true }
   elseif ($arg -match '^--repo-url=(.+)$') { $RepoUrl = $Matches[1] }
   elseif ($arg -eq '--repo-url') {
-    if ($i + 1 -ge $Rest.Count) { Fail 'Falta el valor para --repo-url.' }
-    $i++; $RepoUrl = $Rest[$i]
+    if ($i + 1 -ge $args.Count) { Fail 'Falta el valor para --repo-url.' }
+    $i++; $RepoUrl = $args[$i]
   } elseif ($arg -match '^--target=(.+)$') { $Target = $Matches[1] }
   elseif ($arg -eq '--target') {
-    if ($i + 1 -ge $Rest.Count) { Fail 'Falta el valor para --target.' }
-    $i++; $Target = $Rest[$i]
+    if ($i + 1 -ge $args.Count) { Fail 'Falta el valor para --target.' }
+    $i++; $Target = $args[$i]
   } else {
     Fail "Opción desconocida: $arg (usa -Help para ver las opciones)."
   }
@@ -212,7 +214,7 @@ if ($Help) { Show-Help; exit 0 }
 Write-Step 1 'Verificar que estamos en la raíz del proyecto (o clonar el repositorio)'
 $hasRoot = (Test-Path -LiteralPath 'docker-compose.yml' -PathType Leaf) -and
            (Test-Path -LiteralPath 'package.json' -PathType Leaf) -and
-           (Test-Path -LiteralPath 'scripts/start.sh' -PathType Leaf)
+           (Test-Path -LiteralPath 'scripts/start.ps1' -PathType Leaf)
 if ($hasRoot) {
   Write-Log "Raíz del proyecto detectada: $((Get-Location).Path)"
 } else {
@@ -244,20 +246,21 @@ if ($hasRoot) {
     Print-DepsInstructions (Get-OsName)
     Fail 'git no está instalado; se necesita para clonar.'
   }
-  Write-Log "Clonando el repositorio proporcionado en '$Target'..."
-  & git clone -- $RepoUrl $Target
-  if ($LASTEXITCODE -ne 0) { Fail "git clone falló (código $LASTEXITCODE)." }
+  Write-Log 'Clonando el repositorio proporcionado...'
+  $cloneCode = Invoke-NativeVisible @('git', 'clone', '--', $RepoUrl, $Target)
+  if ($cloneCode -ne 0) { Fail "git clone falló (código $cloneCode)." }
   Set-Location -LiteralPath $Target
 
   $hasRoot = (Test-Path -LiteralPath 'docker-compose.yml' -PathType Leaf) -and
              (Test-Path -LiteralPath 'package.json' -PathType Leaf) -and
-             (Test-Path -LiteralPath 'scripts/start.sh' -PathType Leaf)
+             (Test-Path -LiteralPath 'scripts/start.ps1' -PathType Leaf)
   if (-not $hasRoot) { Fail 'Tras clonar no aparecen los archivos esperados en la raíz.' }
   Write-Log "Repositorio listo en: $((Get-Location).Path)"
 }
+$ProjectRoot = (Get-Location).Path
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Step 2 'Comprobar requisitos (git, Docker, Compose; curl es recomendable)'
+Write-Step 2 'Comprobar requisitos (git, Docker y Docker Compose)'
 $os = Get-OsName
 $missing = New-Object 'System.Collections.Generic.List[string]'
 if (Get-Command git -ErrorAction SilentlyContinue) { Write-Log "git: OK ($(& git --version))" } else { $missing.Add('git') }
@@ -271,12 +274,7 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
 } else {
   $missing.Add('Docker')
 }
-if (Get-Command curl -ErrorAction SilentlyContinue) {
-  Write-Log 'curl: OK (lo usa scripts/start.sh para esperar /health/ready).'
-} else {
-  Write-Warn 'No se encontró curl en el PATH; scripts/start.sh lo necesita para /health/ready (Git for Windows lo incluye).'
-  $missing.Add('curl')
-}
+Write-Log 'curl no es necesario: scripts/start.ps1 usa Invoke-WebRequest para /health/ready.'
 
 if ($missing.Count -gt 0) {
   if ($InstallDeps) {
@@ -290,16 +288,16 @@ if ($missing.Count -gt 0) {
         Fail 'winget no está disponible: no se puede instalar de forma segura. Sigue las instrucciones.'
       }
       if ($missing -contains 'Docker' -or $missing -contains 'Docker Compose plugin') {
-        if (Confirm-Explicit "¿Instalar Docker Desktop con 'winget install --id Docker.DockerDesktop'?" ) {
-          & winget install --id Docker.DockerDesktop -e --accept-package-agreements --accept-source-agreements
-          if ($LASTEXITCODE -ne 0) { Fail 'winget no pudo instalar Docker Desktop.' }
+        if (Confirm-Explicit "¿Instalar Docker Desktop con 'winget install --id Docker.DockerDesktop'?") {
+          $wingetCode = Invoke-NativeVisible @('winget', 'install', '--id', 'Docker.DockerDesktop', '-e', '--accept-package-agreements', '--accept-source-agreements')
+          if ($wingetCode -ne 0) { Fail 'winget no pudo instalar Docker Desktop.' }
           Write-Log 'Docker Desktop instalado: abre la app y espera a que el motor arranque.'
         }
       }
       if ($missing -contains 'git') {
-        if (Confirm-Explicit "¿Instalar Git for Windows (incluye Git Bash) con 'winget install --id Git.Git'?" ) {
-          & winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements
-          if ($LASTEXITCODE -ne 0) { Fail 'winget no pudo instalar Git.' }
+        if (Confirm-Explicit "¿Instalar Git for Windows con 'winget install --id Git.Git'?") {
+          $wingetCode = Invoke-NativeVisible @('winget', 'install', '--id', 'Git.Git', '-e', '--accept-package-agreements', '--accept-source-agreements')
+          if ($wingetCode -ne 0) { Fail 'winget no pudo instalar Git.' }
           Write-Log 'Git instalado: se reinicia el PATH en una terminal nueva.'
         }
       }
@@ -309,20 +307,15 @@ if ($missing.Count -gt 0) {
     if ($os -eq 'macOS' -and (Get-Command brew -ErrorAction SilentlyContinue)) {
       $installedAny = $false
       if ($missing -contains 'Docker' -or $missing -contains 'Docker Compose plugin') {
-        if (Confirm-Explicit "¿Instalar Docker Desktop con 'brew install --cask docker'?" ) {
-          & brew install --cask docker
-          if ($LASTEXITCODE -ne 0) { Fail 'brew no pudo instalar Docker Desktop.' }
+        if (Confirm-Explicit "¿Instalar Docker Desktop con 'brew install --cask docker'?") {
+          $brewCode = Invoke-NativeVisible @('brew', 'install', '--cask', 'docker')
+          if ($brewCode -ne 0) { Fail 'brew no pudo instalar Docker Desktop.' }
           $installedAny = $true
         }
       }
-      if ($missing -contains 'git' -and (Confirm-Explicit "¿Instalar git con 'brew install git'?" )) {
-        & brew install git
-        if ($LASTEXITCODE -ne 0) { Fail 'brew no pudo instalar git.' }
-        $installedAny = $true
-      }
-      if ($missing -contains 'curl' -and (Confirm-Explicit "¿Instalar curl con 'brew install curl'?" )) {
-        & brew install curl
-        if ($LASTEXITCODE -ne 0) { Fail 'brew no pudo instalar curl.' }
+      if ($missing -contains 'git' -and (Confirm-Explicit "¿Instalar git con 'brew install git'?")) {
+        $brewCode = Invoke-NativeVisible @('brew', 'install', 'git')
+        if ($brewCode -ne 0) { Fail 'brew no pudo instalar git.' }
         $installedAny = $true
       }
       if ($installedAny) { Write-Log 'Dependencias instaladas: abre Docker Desktop y vuelve a ejecutar .\install.ps1.' }
@@ -418,19 +411,18 @@ if (Invoke-QuietNative @('docker', 'compose', 'config', '--quiet')) {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Step 6 'Arrancar el proyecto reutilizando scripts/start.sh'
-$bashExe = Get-BashPath
-if (-not $bashExe) {
-  Print-DepsInstructions (Get-OsName)
-  Fail 'No se encontró bash: este instalador reutiliza scripts/start.sh. Instala Git for Windows (Git Bash) o usa WSL con ./install.sh.'
+Write-Step 6 'Arrancar el proyecto con la lógica nativa (scripts/start.ps1)'
+$startScript = Join-Path -Path $ProjectRoot -ChildPath 'scripts/start.ps1'
+if (-not (Test-Path -LiteralPath $startScript -PathType Leaf)) {
+  Fail 'No se encontró scripts/start.ps1 en la raíz del proyecto.'
 }
-$startArgs = @('scripts/start.sh')
+$startArgs = @()
 if ($NoSeed) {
-  $startArgs += '--no-seed'
-  Write-Log 'Reenviando --no-seed a scripts/start.sh.'
+  $startArgs += '-NoSeed'
+  Write-Log 'Reenviando -NoSeed a scripts/start.ps1.'
 }
-& $bashExe @startArgs
-if ($LASTEXITCODE -ne 0) { Fail "scripts/start.sh terminó con código $LASTEXITCODE." }
+& $startScript @startArgs
+if ($LASTEXITCODE -ne 0) { Fail "scripts/start.ps1 terminó con código $LASTEXITCODE." }
 
 # ─────────────────────────────────────────────────────────────────────────────
 Write-Step 7 'Resumen final'
@@ -446,12 +438,14 @@ Write-Host '  Usuario de prueba (SOLO DESARROLLO / PRÁCTICA, no usar en producc
 Write-Host '    email:    estudiante@practicas.local'
 Write-Host '    password: Estudiante.123'
 Write-Host ''
-Write-Host '  Apagar:    .\stop.sh (Git Bash/WSL)  o  npm run project:stop'
-Write-Host '  Reiniciar: .\restart.sh  o  npm run project:restart -- --no-seed'
-Write-Host '  Instalar de nuevo: .\install.ps1'
+Write-Host '  Apagar:    .\stop.ps1  o  .\stop.cmd  o  npm run project:stop:win'
+Write-Host '  Reiniciar: .\restart.ps1 -NoSeed  o  npm run project:restart:win'
+Write-Host '  Instalar de nuevo: .\install.ps1  o  .\install.cmd'
 Write-Host ''
 Write-Host '  Guías:'
 Write-Host '    - postman/README.md'
 Write-Host '    - docs/coding-challenges.md'
 Write-Host ''
 Write-Host '  Seguridad: NO commitees .env (ya está gitignored). No subas tokens ni secretos.'
+Write-Host '  Windows 100% nativo: no se usa bash, Git Bash ni WSL en el ciclo de vida.'
+exit 0
