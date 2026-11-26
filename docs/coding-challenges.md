@@ -12,7 +12,7 @@ Esta guía es tu hoja de ruta para practicar integración de clientes (web, Andr
 
 ### Cómo usar esta guía
 
-1. Pide al profesor la URL pública y configura las variables de Postman (`tunnelUrl`, `hostUrl`, `baseUrl` y `wsBaseUrl`), como se explica en [postman/README.md](../postman/README.md).
+1. Pide al profesor la URL pública y pégala **solo en `tunnelUrl`**; un script de la collection deriva `hostUrl`, `baseUrl` y `wsBaseUrl`, y **Portal › Manifiesto** las refresca, como se explica en [postman/README.md](../postman/README.md).
 2. Empieza por el **Nivel 0** y avanza en orden. Cada nivel reutiliza lo anterior.
 3. Para cada desafío lee el **objetivo**, sigue los **pasos**, y comprueba los **criterios de aceptación** antes de pasar al siguiente.
 4. Usa la **pista** si te atascas, y la **extensión opcional** si quieres subir el nivel.
@@ -42,7 +42,7 @@ No modifiques el código del backend: aquí el objetivo es **consumir** la API, 
 | Correos propios | `{{baseUrl}}/mail/me` desde el portal; la UI de Mailpit **no** se expone |
 | WebSocket | `{{wsBaseUrl}}/socket.io` = `wss://<host-publico>/socket.io` |
 
-`<URL_PUBLICA>` es la raíz que imprime el túnel del profesor, p. ej. `https://<TU-TUNNEL>.trycloudflare.com`. Esa raíz va en `tunnelUrl` y `hostUrl`; añade `/api/v1` solo en `baseUrl`. Si el profesor reinicia el túnel, actualiza las variables. `PUBLIC_BASE_URL` es ajuste del anfitrión y también se configura sin `/api/v1` porque el código añade el sufijo.
+`<URL_PUBLICA>` es la raíz que imprime el túnel del profesor, p. ej. `https://<TU-TUNNEL>.trycloudflare.com`. Pégala solo en `tunnelUrl`: la collection deriva `hostUrl` (raíz), `baseUrl` (raíz + `/api/v1`) y `wsBaseUrl` (con `wss://`); el manifiesto las actualiza desde la URL vigente. Si el profesor reinicia el túnel, vuelve a pegar la URL nueva y ejecuta el manifiesto. `PUBLIC_BASE_URL` es solo el fallback del anfitrión y se escribe sin `/api/v1` porque el código añade el sufijo; el profesor no lo edita cuando cambia el túnel.
 
 **Usuario de prueba del seed (solo desarrollo, compartido):**
 
@@ -69,7 +69,7 @@ Abre **`{{hostUrl}}/portal`** con la URL pública y entra con el usuario de prue
 
 1. Importa **los dos archivos**: `postman/backend-practicas.postman_collection.json` y `postman/backend-practicas.postman_environment.json` (detalles en [postman/README.md](../postman/README.md)).
 2. Selecciona el environment **Backend Prácticas - URL pública (estudiantes)**.
-3. Pega la URL que te dio el profesor en `tunnelUrl` y `hostUrl`: `hostUrl = <URL_PUBLICA>`. En `baseUrl` escribe `<URL_PUBLICA>/api/v1`. Para WebSocket, `wsBaseUrl = wss://<host-publico>`. Repite si el túnel genera una URL nueva.
+3. Pega la URL que te dio el profesor **solo en `tunnelUrl`** (raíz, sin `/api/v1`). El pre-request de la collection calcula `hostUrl`, `baseUrl` y `wsBaseUrl`; después ejecuta **Portal › Manifiesto** (con tu `accessToken`) para confirmar que apuntan a la URL vigente. Repite solo si el túnel genera una URL nueva.
 4. **Ejecuta primero `Auth › Login (pobla accessToken/refreshToken)`**. Sin ese paso, los requests con Bearer devuelven `401`. Los scripts de test autopueblan `accessToken`, `refreshToken`, `userId` y los IDs/versiones de productos, notas, categorías, tareas y archivos.
 5. No instales ni arranques nada en local: si eres el anfitrión trabajando en tu máquina, consulta el [README principal](../README.md#exponer-la-api-con-cloudflare-tunnel).
 

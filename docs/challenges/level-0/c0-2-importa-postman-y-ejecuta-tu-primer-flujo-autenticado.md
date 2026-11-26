@@ -2,7 +2,7 @@
 
 [Índice de la guía](../../coding-challenges.md)
 
-> **URLs:** usa la URL pública de Cloudflare que te entregue el profesor. Si eres el anfitrión y trabajas localmente, consulta la sección [Cloudflare Tunnel](../../../README.md#exponer-la-api-con-cloudflare-tunnel) del README. Las variables `{{baseUrl}}`, `{{hostUrl}}` y `{{wsBaseUrl}}` deben apuntar a la URL pública: `{{hostUrl}}` y `tunnelUrl` son la raíz (`<URL_PUBLICA>`), `{{baseUrl}}` es `<URL_PUBLICA>/api/v1` y `{{wsBaseUrl}}` es `wss://<host-publico>`. El prefijo `/api/v1` **no** se duplica.
+> **URLs:** usa la URL pública de Cloudflare que te entregue el profesor. Si eres el anfitrión y trabajas localmente, consulta la sección [Cloudflare Tunnel](../../../README.md#exponer-la-api-con-cloudflare-tunnel) del README. Pega esa única URL en `tunnelUrl`: la collection deriva `{{hostUrl}}` (raíz), `{{baseUrl}}` (raíz + `/api/v1`) y `{{wsBaseUrl}}` (`wss://<host-publico>`), y **Portal › Manifiesto** las refresca. El prefijo `/api/v1` **no** se duplica.
 > **Convención:** `TOKEN` es tu `accessToken`, `<uuid>` un identificador real copiado de una respuesta y `<spaceId>` el UUID de tu sandbox o equipo.
 > **Cuenta compartida:** el usuario sembrado de desarrollo es solo de práctica. Con una sola URL pública, todos los estudiantes que lo usen caen en el **mismo espacio personal**. Usa un sandbox propio (`x-space-id`) o registra tu propia cuenta cuando el desafío lo permita (Nivel 3), y **no cambies la contraseña sembrada**.
 
@@ -18,7 +18,7 @@
 
 **Pasos**
 
-1. Importa la colección y el environment siguiendo [postman/README.md](../../../postman/README.md) o la sección [Importar Postman](../../coding-challenges.md#importar-postman). Selecciona el environment **Backend Prácticas - URL pública (estudiantes)** y pega la URL del profesor en `tunnelUrl` y `hostUrl`; en `baseUrl` escribe esa misma raíz **más `/api/v1`**. Si el profesor te da una URL nueva, actualiza las tres.
+1. Importa la colección y el environment siguiendo [postman/README.md](../../../postman/README.md) o la sección [Importar Postman](../../coding-challenges.md#importar-postman). Selecciona el environment **Backend Prácticas - URL pública (estudiantes)** y pega la URL del profesor **solo en `tunnelUrl`**; `hostUrl`, `baseUrl` y `wsBaseUrl` se derivan solas. Si el profesor te da una URL nueva, vuelve a pegarla ahí y ejecuta **Portal › Manifiesto**.
 2. Ejecuta `Health › Readiness`.
 3. Ejecuta `Auth › Login (pobla accessToken/refreshToken)` con `estudiante@practicas.local` / `Estudiante.123` (usuario de práctica, no real). Para no compartir espacio con otros estudiantes, crea tu propio sandbox anónimo o registra tu cuenta propia en el Nivel 3; no modifiques la contraseña del usuario sembrado.
 4. Abre la pestaña *Tests* del request de login y comprueba que `accessToken`, `refreshToken` y `userId` quedaron escritos en el environment.

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "7f1c9e64-3a2b-4f81-9d0e-2c6b5a8f4e11",
     "name": "Backend de prácticas (Etapas 1-4)",
-    "description": "Collection del backend NestJS de prácticas (Etapas 1-4). Prefijo global /api/v1; health fuera del prefijo.\nEjecuta primero Auth › Login para poblar accessToken/refreshToken. Los IDs se autopueblan con los scripts de test.\nEtapa 4: Realtime (documentación WS + salas de chat), Notifications, Jobs (exports CSV inline/Redis) y Web Auth (cookies HttpOnly + CSRF).\nEl socket se conecta en {{wsBaseUrl}}/socket.io (wss://<TU-TUNNEL>.trycloudflare.com/socket.io) con auth.token={{accessToken}}; eventos: chat:send/message, resource:changed, notification:new, job:updated, events:replay.\nNo incluye secretos de producción: las credenciales del environment son solo del seed de desarrollo.\nPortal del estudiante: UI en /portal (HTML/CSS/JS vanilla), manifiesto/descargas autorizadas, bandeja propia en /mail/me y guía de challenges. Ejecuta primero Auth › Login.",
+    "description": "Collection del backend NestJS de prácticas (Etapas 1-4). Prefijo global /api/v1; health fuera del prefijo.\nEjecuta primero Auth › Login para poblar accessToken/refreshToken. Los IDs se autopueblan con los scripts de test.\nEtapa 4: Realtime (documentación WS + salas de chat), Notifications, Jobs (exports CSV inline/Redis) y Web Auth (cookies HttpOnly + CSRF).\nEl socket se conecta en {{wsBaseUrl}}/socket.io (wss://<TU-TUNNEL>.trycloudflare.com/socket.io) con auth.token={{accessToken}}; eventos: chat:send/message, resource:changed, notification:new, job:updated, events:replay.\nNo incluye secretos de producción: las credenciales del environment son solo del seed de desarrollo.\nPortal del estudiante: UI en /portal (HTML/CSS/JS vanilla), manifiesto/descargas autorizadas, bandeja propia en /mail/me y guía de challenges. Ejecuta primero Auth › Login.\nNuevo flujo de URL única: pega la URL del profesor SOLO en `tunnelUrl`; un script a nivel collection deriva `hostUrl`, `baseUrl` y `wsBaseUrl` antes de cada request. `Portal › Manifiesto` vuelve a derivarlos desde la URL vigente devuelta por la app y valida el JSON con JSON.parse.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -5208,7 +5208,7 @@
     },
     {
       "name": "Portal",
-      "description": "Endpoints nuevos del portal del estudiante (UI en {{hostUrl}}/portal). Ejecuta primero Auth › Login para poblar accessToken. Las descargas y la guía requieren Bearer: en la UI se resuelven con fetch + Blob.",
+      "description": "Endpoints nuevos del portal del estudiante (UI en {{hostUrl}}/portal). Ejecuta primero Auth › Login para poblar accessToken. Las descargas y la guía requieren Bearer: en la UI se resuelven con fetch + Blob. Flujo de URL única: pega la URL en `tunnelUrl` y ejecuta **Manifiesto** (requiere Bearer de Auth › Login): sus scripts derivan el resto de variables.",
       "item": [
         {
           "name": "UI del portal · GET {{hostUrl}}/portal",
@@ -5263,7 +5263,7 @@
               ],
               "query": []
             },
-            "description": "URLs base, Swagger, descargas, los 12 escenarios reales y los niveles 0-6."
+            "description": "URLs base vigentes (archivo del túnel o PUBLIC_BASE_URL), Swagger, descargas, 12 escenarios y niveles 0-6. Autoconfigura tunnelUrl/hostUrl/baseUrl/wsBaseUrl desde `data.baseUrl`; valida el JSON con JSON.parse."
           },
           "event": [
             {
@@ -5273,9 +5273,25 @@
                 "exec": [
                   "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "const j = pm.response.json();",
+                  "let j;",
+                  "try { j = JSON.parse(pm.response.text()); } catch (e) { throw new Error('El manifiesto no devolvió JSON válido'); }",
+                  "pm.test('JSON válido', () => pm.expect(j.data).to.be.an('object'));",
                   "pm.test('12 escenarios', () => pm.expect(j.data.scenarios).to.have.lengthOf(12));",
-                  "pm.test('Niveles 0-6', () => pm.expect(j.data.challenges.map(c => c.level)).to.eql([0,1,2,3,4,5,6]));"
+                  "pm.test('Niveles 0-6', () => pm.expect(j.data.challenges.map(c => c.level)).to.eql([0,1,2,3,4,5,6]));",
+                  "const root = String(j.data.baseUrl || '').replace(/\\/+$/, '');",
+                  "pm.test('URL pública vigente', () => pm.expect(root).to.match(/^https?:\\/\\//));",
+                  "if (root) {",
+                  "  setVar('tunnelUrl', root);",
+                  "  setVar('hostUrl', root);",
+                  "  setVar('baseUrl', j.data.apiBaseUrl || (root + '/api/v1'));",
+                  "  setVar('wsBaseUrl', j.data.wsBaseUrl || root.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:'));",
+                  "}",
+                  "pm.test('Variables derivadas de una sola URL', () => {",
+                  "  pm.expect(pm.variables.get('tunnelUrl')).to.eql(root);",
+                  "  pm.expect(pm.variables.get('hostUrl')).to.eql(root);",
+                  "  pm.expect(pm.variables.get('baseUrl')).to.eql(root + '/api/v1');",
+                  "  pm.expect(pm.variables.get('wsBaseUrl')).to.eql(root.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:'));",
+                  "});"
                 ]
               }
             }
@@ -5486,19 +5502,25 @@
       "key": "baseUrl",
       "value": "https://<TU-TUNNEL>.trycloudflare.com/api/v1",
       "type": "string",
-      "description": "PLACEHOLDER: raíz pública del profesor más /api/v1 (selecciona el environment de estudiantes)."
+      "description": "Se deriva de `tunnelUrl` (raíz + /api/v1) o del manifiesto del portal. No lo edites a mano."
+    },
+    {
+      "key": "tunnelUrl",
+      "value": "https://<TU-TUNNEL>.trycloudflare.com",
+      "type": "string",
+      "description": "ÚNICO campo que pega el estudiante: URL raíz del profesor, sin /api/v1."
     },
     {
       "key": "hostUrl",
       "value": "https://<TU-TUNNEL>.trycloudflare.com",
       "type": "string",
-      "description": "PLACEHOLDER: raíz pública sin /api/v1; health está fuera de /api/v1."
+      "description": "Se deriva de `tunnelUrl` (raíz, sin /api/v1). No lo edites a mano."
     },
     {
       "key": "wsBaseUrl",
       "value": "wss://<TU-TUNNEL>.trycloudflare.com",
       "type": "string",
-      "description": "PLACEHOLDER: raíz pública para Socket.IO ({{wsBaseUrl}}/socket.io)."
+      "description": "Se deriva de `tunnelUrl` (wss:// para https). No lo edites a mano."
     },
     {
       "key": "accessToken",
@@ -5679,6 +5701,39 @@
       "value": "",
       "type": "string",
       "description": "Espacio activo del portal, autopoblado por Portal › Espacios seleccionables."
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Una sola URL pegada en `tunnelUrl` configura el resto de variables.",
+          "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+          "const normalizeOneUrl = (raw) => {",
+          "  const value = String(raw || '').trim();",
+          "  if (!value || /<[^>]+>/.test(value)) return null;",
+          "  const m = value.match(/^(https?|wss?):\\/\\/([^/?#\\s]+)([^?#]*)/i);",
+          "  if (!m) return null;",
+          "  if (m[2].indexOf('@') !== -1) return null;",
+          "  const scheme = /^wss?:$/i.test(m[1]) ? 'https' : m[1].toLowerCase();",
+          "  const path = m[3].replace(/\\/+$/, '');",
+          "  if (path && path.toLowerCase() !== '/api/v1') return null;",
+          "  return scheme + '://' + m[2].replace(/\\/+$/, '');",
+          "};",
+          "try {",
+          "  const candidates = [pm.variables.get('tunnelUrl'), pm.collectionVariables.get('tunnelUrl')];",
+          "  const root = candidates.map(normalizeOneUrl).find(Boolean) || null;",
+          "  if (root) {",
+          "    setVar('tunnelUrl', root);",
+          "    setVar('hostUrl', root);",
+          "    setVar('baseUrl', root + '/api/v1');",
+          "    setVar('wsBaseUrl', root.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:'));",
+          "  }",
+          "} catch (e) { /* sin URL pegada todavía: se respetan los valores actuales */ }"
+        ]
+      }
     }
   ]
 }

@@ -15,11 +15,11 @@ API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL
 Los estudiantes **no instalan ni arrancan nada**: el backend corre en tu máquina y solo consumen la URL pública.
 
 1. Reciben de ti la URL `https://<TU-TUNNEL>.trycloudflare.com` (temporal: cambia en cada ejecución del túnel).
-2. Importan la [colección y el environment de Postman](postman/README.md) y configuran `tunnelUrl`, `hostUrl` y `baseUrl` con esa URL; `baseUrl` añade `/api/v1` y `hostUrl` es solo la raíz. Para WebSocket usan `wsBaseUrl`.
+2. Importan la [colección y el environment de Postman](postman/README.md) y **pegan esa única URL en `tunnelUrl`**. Un script de la collection deriva `hostUrl` (raíz), `baseUrl` (raíz + `/api/v1`) y `wsBaseUrl` (con `wss://`); ejecutar **Portal › Manifiesto** las refresca desde la URL vigente que devuelve la app. No copian la URL en cuatro sitios ni instalan nada.
 3. Abren el portal y Swagger en `https://<TUNNEL>/portal` y `https://<TUNNEL>/docs`. La UI de Mailpit **no se expone**: cada estudiante ve solo sus correos en el portal (`GET /api/v1/mail/me`).
 4. Hacen el [Nivel 0 del índice de challenges](docs/coding-challenges.md#nivel-0--conexión-a-la-api-pública) y continúan en orden.
 
-> Si el túnel se reinicia, comparte la URL nueva: las anteriores dejan de funcionar. El profesor puede abrirlo al terminar `./start.sh` (la terminal le pregunta) o manualmente; los comandos de esta guía siguen siendo solo para el anfitrión.
+> Si el túnel se reinicia, comparte la URL nueva: las anteriores dejan de funcionar. El profesor no edita `.env`: el túnel escribe la URL en `run/tunnel-url.txt` y la app la usa en runtime. El estudiante solo vuelve a pegar la URL en `tunnelUrl` y ejecuta el manifiesto. El profesor puede abrir el túnel al terminar `./start.sh` (la terminal le pregunta) o manualmente; los comandos de esta guía siguen siendo solo para el anfitrión.
 
 ## Decisiones mantenidas
 
@@ -98,7 +98,7 @@ Reglas importantes:
 
 - `.env.example` es la **única** plantilla versionada y contiene solo valores de desarrollo/placeholders (`CHANGE_ME_*`, `dev_password_change_me`).
 - `.env` es **local y nunca se versiona** (`git check-ignore -v .env` debe mostrar la regla de `.gitignore`). No lo compartas ni lo subas a GitHub.
-- Con los valores de ejemplo no hay que editar nada. Si cambias el puerto, **actualiza las tres referencias**: `APP_HOST_PORT`, `PUBLIC_BASE_URL` (p. ej. `http://localhost:4000`) y las variables `baseUrl`/`hostUrl` de Postman. Los correos construyen enlaces como `${PUBLIC_BASE_URL}/api/v1/...`.
+- Con los valores de ejemplo no hay que editar nada. Si cambias el puerto, **actualiza `APP_HOST_PORT` y `PUBLIC_BASE_URL`** (p. ej. `http://localhost:4000`); las variables de Postman se derivan solas desde `tunnelUrl`. Los correos construyen enlaces como `${PUBLIC_BASE_URL}/api/v1/...` salvo que haya un archivo de túnel vigente.
 - `POSTGRES_PASSWORD` y la contraseña dentro de `DATABASE_URL` deben ser la misma (`dev_password_change_me` en la plantilla). Si cambias una, cambia la otra.
 
 ### 4. Arranque
@@ -143,7 +143,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:3100/api/v1/users/me
 
 ### URLs y usuario de prueba
 
-Las URLs de la API usan el puerto host configurado en `APP_HOST_PORT` (`3100` en este entorno; la plantilla usa el mismo valor). Si cambias ese valor, sustituye `3100` por él en los ejemplos **y actualiza `PUBLIC_BASE_URL`** con el mismo puerto.
+Las URLs de la API usan el puerto host configurado en `APP_HOST_PORT` (`3100` en este entorno; la plantilla usa el mismo valor). Si cambias ese valor, sustituye `3100` por él en los ejemplos **y actualiza `PUBLIC_BASE_URL`** con el mismo puerto. Ese valor es el fallback: cuando el túnel publica una URL, `run/tunnel-url.txt` tiene prioridad sobre él.
 
 | Recurso | URL |
 |---|---|
@@ -227,7 +227,7 @@ El puerto publicado se controla únicamente con `APP_HOST_PORT` en `.env` (en es
 ## Postman y guías de estudio
 
 1. Abre Postman → **Import → Upload Files** y selecciona `postman/backend-practicas.postman_collection.json` y `postman/backend-practicas.postman_environment.json`.
-2. Selecciona el environment **Backend Prácticas - URL pública (estudiantes)**. Pega la URL del túnel en `tunnelUrl` y `hostUrl` (raíz, sin `/api/v1`); en `baseUrl` escribe `<URL_PUBLICA>/api/v1` y en `wsBaseUrl` la raíz con `wss://`. Actualízalos cuando el túnel dé una URL nueva; ver [Flujo del estudiante](#flujo-del-estudiante-sin-instalación).
+2. Selecciona el environment **Backend Prácticas - URL pública (estudiantes)**. Pega la URL del túnel **solo en `tunnelUrl`**; un script a nivel collection deriva `hostUrl`, `baseUrl` y `wsBaseUrl`, y **Portal › Manifiesto** las vuelve a derivar desde la URL vigente de la app. Solo repite eso cuando el túnel dé una URL nueva; ver [Flujo del estudiante](#flujo-del-estudiante-sin-instalación).
 3. Ejecuta primero **Health › Readiness** y luego **Auth › Login**: los scripts autopueblan `accessToken`, IDs y `version`. Si no hay login, las peticiones con Bearer devuelven 401.
 4. Detalles, flujo recomendado, roles, simulador, Etapa 3 y la nueva carpeta **Portal** (manifiesto, descargas, espacios y bandeja propia): [postman/README.md](postman/README.md).
 5. Ejercicios y retos para estudiantes: [docs/coding-challenges.md](docs/coding-challenges.md). El [portal](#portal-del-estudiante) muestra el mismo resumen con ejemplos.
@@ -611,13 +611,23 @@ Flujo del script en modo directo: compila si falta `dist/main.js` → arranca `n
 
 Flujo en modo Docker: `./start.sh` hace build/up, espera migrate/health y aplica el seed **antes** de preguntar; si aceptas, llama a `PORT=$APP_HOST_PORT node scripts/start-with-public-url.mjs --tunnel-only`. Ese modo solo comprueba `/health/ready` y abre el túnel: no compila, no inicia un segundo backend (evita `EADDRINUSE`) y no vuelve a preguntar. `Ctrl+C` cierra el túnel; los contenedores siguen activos.
 
-Copia la URL impresa (`https://xxxx.trycloudflare.com`) y úsala en los tres sitios siguientes.
+La URL impresa (`https://xxxx.trycloudflare.com`) es la **única** que compartes con los estudiantes. Ya no hace falta copiarla en `.env` ni en cuatro variables de Postman.
 
-### Cómo configurar la URL pública
+### Propagación automática de la URL (ciclo de vida del profesor)
 
-1. **`.env` (enlaces generados por la app):** `PUBLIC_BASE_URL=https://xxxx.trycloudflare.com`. Escribe **solo la raíz, sin `/api/v1`**: el código añade el sufijo (`${PUBLIC_BASE_URL}/api/v1/...`, `${PUBLIC_BASE_URL}/docs`, `${PUBLIC_BASE_URL}/portal`). Tras cambiarlo, reinicia la app (`docker compose restart app` en Docker; en el modo directo, detén y vuelve a ejecutar el script).
-2. **Postman:** `tunnelUrl = https://xxxx.trycloudflare.com`, `hostUrl = https://xxxx.trycloudflare.com` y `baseUrl = https://xxxx.trycloudflare.com/api/v1`. Cambia los tres cada vez que el túnel dé una URL nueva. Consulta [postman/README.md](postman/README.md#usar-la-url-pública-de-cloudflare-tunnel).
-3. **Portal y Swagger:** con esos valores, abre `https://xxxx.trycloudflare.com/portal` y `https://xxxx.trycloudflare.com/docs`. El manifiesto del portal y los enlaces de los correos usan `PUBLIC_BASE_URL`, así que sin el paso 1 esos enlaces seguirán apuntando a `localhost`.
+1. Al detectar la URL, `scripts/start-with-public-url.mjs` crea `run/` si hace falta y escribe `run/tunnel-url.txt`: **texto plano, una sola línea con la URL raíz** (sin `/api/v1`, sin credenciales, sin query/fragmento). Ejemplo: `https://xxxx.trycloudflare.com\n`. No contiene tokens.
+2. Docker monta `./run:/app/run:ro` en `app` y `worker` (solo lectura; no se tocan los volúmenes existentes ni se hace `down -v`). La app lee ese archivo en **cada uso** a través de `PublicUrlService`: si cambia el túnel, basta con compartir la URL nueva; **no hay que editar `.env` ni reiniciar**.
+3. El servicio valida el contenido (http/https, raíz, sin credenciales/query/fragmento). Si el archivo no existe, está inválido o se eliminó, usa exactamente el comportamiento anterior con `PUBLIC_BASE_URL` (raíz; el código sigue añadiendo `/api/v1`). En `NODE_ENV=test` o con `PUBLIC_URL_FILE_DISABLED=true` el archivo se ignora para no afectar e2e.
+4. Al cerrar el túnel (`Ctrl+C`, `SIGINT`/`SIGTERM`, salida del proceso, error de `cloudflared` o muerte del backend en modo directo), el script borra el archivo: no quedan URLs muertas apuntando en correos ni en el manifiesto.
+5. Si el proceso se mata con `SIGKILL` no hay limpieza posible: borra `run/tunnel-url.txt` a mano antes de volver a compartir enlaces (ver [Solución de problemas](#solución-de-problemas)).
+
+Variables relacionadas: `PUBLIC_URL_FILE` (default `./run/tunnel-url.txt`, relativa al cwd; `/app/run/...` dentro de Docker) y `PUBLIC_URL_FILE_DISABLED` (escape para e2e). `run/` está gitignored y es local/efímero.
+
+### Cómo configurar la URL pública (fallback)
+
+1. **`.env` (solo fallback de enlaces generados):** `PUBLIC_BASE_URL` debe ser la raíz **sin `/api/v1`**. En local, `http://localhost:3100` (mismo puerto que `APP_HOST_PORT`). **No lo cambies al abrir el túnel**: el archivo del túnel tiene prioridad. Si no hay archivo, el código sigue construyendo `${PUBLIC_BASE_URL}/api/v1/...`, `${PUBLIC_BASE_URL}/docs` y `${PUBLIC_BASE_URL}/portal` como siempre.
+2. **Postman:** pega la URL del profesor **solo en `tunnelUrl`**; el script de la collection deriva `hostUrl`, `baseUrl` y `wsBaseUrl`, y **Portal › Manifiesto** las actualiza desde `data.baseUrl` (la URL vigente que devuelve la app). Consulta [postman/README.md](postman/README.md#usar-la-url-pública-de-cloudflare-tunnel).
+3. **Portal y Swagger:** abre `https://xxxx.trycloudflare.com/portal` y `https://xxxx.trycloudflare.com/docs`. El manifiesto (`GET /api/v1/portal/manifest`, con Bearer) y los enlaces de los correos usan la URL vigente resuelta en runtime.
 
 ### Qué NO exponer
 
@@ -630,7 +640,7 @@ Los datos siguen en los volúmenes Docker de tu máquina (`postgres_data`, `mail
 
 ### Seguridad y recomendaciones
 
-- La URL es **temporal y aleatoria**: cada reinicio genera una nueva; trátala como un secreto compartido solo con tus estudiantes. Si se filtra, reinicia el túnel para rotarla y actualiza `.env` y Postman.
+- La URL es **temporal y aleatoria**: cada reinicio genera una nueva; trátala como un secreto compartido solo con tus estudiantes. Si se filtra, reinicia el túnel para rotarla: el archivo se reescribe solo y los estudiantes pegan la nueva en `tunnelUrl` + ejecutan el manifiesto.
 - El quick tunnel **no tiene autenticación**: cualquiera con la URL accede. Úsalo solo para práctica/demo con datos de ejemplo; para un despliegue real, migrar a un túnel nombrado con **Cloudflare Access** (config/credenciales en local, fuera del repo).
 - No compartas correos reales, contraseñas ni tokens en capturas o logs, y no subas `.env`, tokens ni config de cloudflared a Git (`.env` ya está gitignored).
 - **No apto para producción** ni datos sensibles. Cloudflare puede limitar o cerrar túneles sin aviso.
@@ -649,6 +659,8 @@ Los datos siguen en los volúmenes Docker de tu máquina (`postgres_data`, `mail
 | `TUNNEL_ONLY=1` / `--tunnel-only` | Modo interno usado por `./start.sh`: no compila ni arranca backend, solo abre el túnel en `PORT`. |
 | `READY_TIMEOUT_MS` | Espera máxima a `/health/ready` en el script (default 60000). |
 | `FORCE_BUILD=1` / `SKIP_BUILD=1` | Fuerza u omite `npm run build`. |
+| `PUBLIC_URL_FILE` | Ruta del archivo efímero propagado (default `./run/tunnel-url.txt`). Lo usan el script y la app. |
+| `PUBLIC_URL_FILE_DISABLED=true` | Ignora el archivo y fuerza el fallback `PUBLIC_BASE_URL` (útil en e2e; `NODE_ENV=test` ya lo hace). |
 
 No hay variables de token ni de nombre de túnel: el quick tunnel no las usa. Plantilla comentada en [.env.example](.env.example).
 
@@ -656,7 +668,9 @@ No hay variables de token ni de nombre de túnel: el quick tunnel no las usa. Pl
 
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
-| `Bind for 0.0.0.0:3100 failed: port is already allocated` o `./start.sh` avisa de puerto ocupado | Otro proyecto/contenedor usa 3100 | **No detengas** el contenedor ajeno. Identifícalo con `docker ps --format '{{.Names}} {{.Ports}}'` y cambia `APP_HOST_PORT` en `.env` (junto con `PUBLIC_BASE_URL` y las variables de Postman). |
+| `Bind for 0.0.0.0:3100 failed: port is already allocated` o `./start.sh` avisa de puerto ocupado | Otro proyecto/contenedor usa 3100 | **No detengas** el contenedor ajeno. Identifícalo con `docker ps --format '{{.Names}} {{.Ports}}'` y cambia `APP_HOST_PORT` y `PUBLIC_BASE_URL` en `.env`; en Postman pega la nueva raíz en `tunnelUrl`. |
+| Enlaces de correos/manifiesto apuntan a un dominio `trycloudflare.com` viejo | `run/tunnel-url.txt` quedó stale (túnel reiniciado con `SIGKILL` o archivo copiado de otra sesión) | Comprueba `cat run/tunnel-url.txt`; si la URL ya no responde, `rm run/tunnel-url.txt` (o abre/cierra el túnel para que se reescriba). La app volverá a `PUBLIC_BASE_URL` o a la URL nueva sin reinicio. |
+| La app sigue usando `localhost` con el túnel activo | El archivo no existe, no es texto plano con la URL raíz o el contenedor no ve el bind mount | Verifica `cat run/tunnel-url.txt` (una sola línea, sin `/api/v1`), `docker compose config` (montaje `./run:/app/run:ro` en `app`/`worker`) y reinicia el túnel. Si quieres forzar el fallback: `PUBLIC_URL_FILE_DISABLED=true`. |
 | Servicio `migrate` en `Exited(1)` | Migración fallida o `DATABASE_URL`/contraseña incoherente; a veces PostgreSQL aún no estaba *healthy* | `docker compose logs --tail=100 migrate`; comprueba que `POSTGRES_PASSWORD` coincide con la contraseña de `DATABASE_URL`. Corrige `.env` y vuelve a `./start.sh` (las migraciones son idempotentes). No borres volúmenes. |
 | Errores de módulos / `Cannot find module` tras cambiar dependencias | `node_modules` del contenedor quedó viejo (el volumen anónimo **no** se actualiza solo al reconstruir la imagen) | `docker compose build app worker`, luego `docker compose exec app npm ci && docker compose exec app npx prisma generate` (y lo mismo en `worker`) y `docker compose restart app worker`. No mezcles `node_modules` del host con el del contenedor. |
 | `npm` se queja de la versión de Node en el host (EBADENGINE) o `nest: not found` | Node del host fuera de rango (p. ej. Node 25) | Usa Docker, o `nvm use` (lee `.nvmrc` → `20.18.1`). El rango soportado es `>=20.18.1 <21`. |
@@ -762,7 +776,7 @@ docker compose exec -T -e JOBS_QUEUE_MODE=inline app sh -c \
    DATABASE_URL="$TEST_URL" npm run test:e2e'
 ```
 
-Estado: **16 suites e2e, 93/93 pruebas** (67 de Etapas 1-3 + notificaciones, realtime/chat/replay, jobs inline/descarga/`failedAsyncJob`, cookies/CSRF y portal: `/portal`, assets, manifiesto, descargas, espacios, guía y `/mail/me` con filtro por usuario) y **4 suites unitarias, 9/9**. Los archivos no requieren MinIO en CI: se usa un stub inyectado en el token `STORAGE_PROVIDER`.
+Estado: **16 suites e2e, 93/93 pruebas** (67 de Etapas 1-3 + notificaciones, realtime/chat/replay, jobs inline/descarga/`failedAsyncJob`, cookies/CSRF y portal: `/portal`, assets, manifiesto con los nuevos campos de URL, descargas, espacios, guía y `/mail/me` con filtro por usuario) y **5 suites unitarias, 20/20** (la nueva suite de `PublicUrlService`: archivo válido, cambios en runtime, contenidos inválidos, fallback y modo test). Los archivos no requieren MinIO en CI: se usa un stub inyectado en el token `STORAGE_PROVIDER`.
 
 > Las e2e se ejecutan **dentro del contenedor `app`** (donde el host `postgres` existe) contra `practicas_test`, como muestra el comando anterior. Nunca apuntes las pruebas a la BD de los estudiantes ni borres volúmenes.
 
@@ -788,6 +802,7 @@ backendPruebas/
 ├── public/portal/                  UI vanilla del portal (index.html + assets)
 ├── postman/                        collection + environment + README
 ├── storage/uploads/                archivos locales (contenido ignorado por Git)
+├── run/                            local/efímero, ignorado: tunnel-url.txt del túnel
 ├── package.json, package-lock.json, tsconfig*.json, nest-cli.json, .nvmrc
 ```
 
@@ -796,7 +811,7 @@ Detalle de `src/`:
 ```
 src/
   main.ts, app.module.ts, app.configure.ts  bootstrap, prefijo /api/v1, Swagger, ValidationPipe
-  config/, common/, prisma/, health/        entorno, logs/errores/paginación, BD, health
+  config/, common/, prisma/, health/        entorno, URL pública en runtime, logs/errores/paginación, BD, health
   auth/, users/                              JWT + refresh revocable, perfil y avatar
   spaces/                                    resolución, sandboxes TTL, equipos, miembros, reset
   products/, notes/, public/*                CRUD Etapa 1 + x-space-id opcional

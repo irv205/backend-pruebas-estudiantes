@@ -92,6 +92,9 @@ services:
       - /app/node_modules
       # Almacenamiento local de archivos (alternativa a MinIO; Etapa 2).
       - files_data:/app/storage/uploads
+      # URL pública del túnel: escrita por el host, SOLO lectura en el contenedor.
+      # La app la relee en runtime; no hace falta editar .env ni reiniciar.
+      - ./run:/app/run:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -129,6 +132,7 @@ services:
       - .:/app
       - /app/node_modules
       - files_data:/app/storage/uploads
+      - ./run:/app/run:ro
     depends_on:
       postgres:
         condition: service_healthy

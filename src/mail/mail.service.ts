@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
+import { PublicUrlService } from '../common/public-url.service';
 
 /**
  * Envío de correos de prueba vía SMTP interno (Mailpit).
@@ -13,19 +14,18 @@ export class MailService {
   private readonly logger = new Logger(MailService.name);
   private readonly transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo>;
   private readonly from: string;
-  private readonly publicBaseUrl: string;
 
-  constructor(config: ConfigService) {
+  constructor(config: ConfigService, private readonly publicUrls: PublicUrlService) {
     this.transporter = nodemailer.createTransport({
       host: config.getOrThrow<string>('SMTP_HOST'),
       port: config.getOrThrow<number>('SMTP_PORT'),
       secure: false,
     });
     this.from = config.getOrThrow<string>('SMTP_FROM');
-    this.publicBaseUrl = config.getOrThrow<string>('PUBLIC_BASE_URL');
   }
 
   async sendVerificationEmail(to: string, token: string): Promise<void> {
+    const apiBaseUrl = this.publicUrls.getApiBaseUrl();
     await this.send(
       to,
       'Verifica tu correo — Backend de práctica',
@@ -36,7 +36,7 @@ export class MailService {
         token,
         '',
         'Verifícalo con:',
-        `curl -X POST ${this.publicBaseUrl}/api/v1/auth/verify-email \\`,
+        `curl -X POST ${apiBaseUrl}/auth/verify-email \\`,
         '  -H "Content-Type: application/json" \\',
         `  -d '{"token": "${token}"}'`,
       ].join('\n'),
@@ -44,6 +44,7 @@ export class MailService {
   }
 
   async sendPasswordResetEmail(to: string, token: string): Promise<void> {
+    const apiBaseUrl = this.publicUrls.getApiBaseUrl();
     await this.send(
       to,
       'Recuperación de contraseña — Backend de práctica',
@@ -54,7 +55,7 @@ export class MailService {
         token,
         '',
         'Cámbiala con:',
-        `curl -X POST ${this.publicBaseUrl}/api/v1/auth/reset-password \\`,
+        `curl -X POST ${apiBaseUrl}/auth/reset-password \\`,
         '  -H "Content-Type: application/json" \\',
         `  -d '{"token": "${token}", "password": "TuNueva.Password1"}'`,
         '',

@@ -13,31 +13,34 @@ No necesitas Docker, Node ni acceso al repositorio: el profesor arranca el backe
 
 1. Recibe del profesor la URL pública `https://<TU-TUNNEL>.trycloudflare.com`. Es temporal: **cambia en cada ejecución**.
 2. Importa ambos archivos JSON y selecciona el environment **Backend Prácticas - URL pública (estudiantes)** (pasos abajo).
-3. Pega la URL en `tunnelUrl`; deriva `hostUrl` (raíz), `baseUrl` (raíz + `/api/v1`) y `wsBaseUrl` (raíz con `wss://`). Actualiza las cuatro si el túnel genera una URL nueva.
-4. Abre portal y Swagger en `https://<TUNNEL>/portal` y `https://<TUNNEL>/docs`; la UI de Mailpit no se expone, tus correos están en el portal (`GET {{baseUrl}}/mail/me`).
-5. Empieza por el [Nivel 0 del índice](../docs/coding-challenges.md#nivel-0--conexión-a-la-api-pública).
+3. Pega esa URL **solo en `tunnelUrl`**. Antes de cada request, un script de la collection deriva `hostUrl` (raíz), `baseUrl` (raíz + `/api/v1`) y `wsBaseUrl` (con `wss://`). No copies la URL en los otros tres campos.
+4. Ejecuta **Auth › Login** y luego **Portal › Manifiesto**: el manifiesto valida el JSON con `JSON.parse` y vuelve a derivar las cuatro variables desde `data.baseUrl`, la URL vigente que devuelve la app (no hace falta editar `.env`).
+5. Abre portal y Swagger en `https://<TUNNEL>/portal` y `https://<TUNNEL>/docs`; la UI de Mailpit no se expone, tus correos están en el portal (`GET {{baseUrl}}/mail/me`). Empieza por el [Nivel 0 del índice](../docs/coding-challenges.md#nivel-0--conexión-a-la-api-pública).
+
+> Si el túnel cambia de URL, repite los pasos 3 y 4: pega la nueva en `tunnelUrl` y ejecuta el manifiesto. No hay que tocar `hostUrl`, `baseUrl`, `wsBaseUrl` ni `PUBLIC_BASE_URL`.
 
 ## Importar
 
 1. En Postman: **Import → Upload Files** y selecciona ambos archivos JSON (también puedes arrastrar la carpeta `postman/`).
 2. En el selector de environment (arriba a la derecha) elige **Backend Prácticas - URL pública (estudiantes)**.
-3. Pega la URL del profesor en `tunnelUrl` y `hostUrl` = `<URL_PUBLICA>` (raíz, **sin** `/api/v1`). Escribe `baseUrl` = `<URL_PUBLICA>/api/v1` y `wsBaseUrl` = `wss://<host-publico>`. Los valores que trae el archivo son placeholders con `<TU-TUNNEL>.trycloudflare.com`, no URLs reales. Además de los IDs de las etapas anteriores, están `orderId`, `paymentId`, `idempotencyKey` (Etapa 3), `notificationId`, `jobId`, `roomId`, `csrfToken`, `webRefreshToken` (Etapa 4) y `portalSpaceId` (portal).
-4. La documentación interactiva de la API está en `{{hostUrl}}/docs` (Swagger) y el portal en `{{hostUrl}}/portal`.
+3. Pega la URL del profesor **solo en `tunnelUrl`** (raíz, **sin** `/api/v1`): los scripts derivan `hostUrl`, `baseUrl` y `wsBaseUrl` con `setVar` (environment si hay uno seleccionado; si no, variables de collection). El archivo trae placeholders con `<TU-TUNNEL>.trycloudflare.com`, no URLs reales. Además de los IDs de las etapas anteriores, están `orderId`, `paymentId`, `idempotencyKey` (Etapa 3), `notificationId`, `jobId`, `roomId`, `csrfToken`, `webRefreshToken` (Etapa 4) y `portalSpaceId` (portal).
+4. Ejecuta **Auth › Login** y **Portal › Manifiesto** (esta última valida JSON con `JSON.parse` y confirma las variables derivadas). La documentación interactiva está en `{{hostUrl}}/docs` (Swagger) y el portal en `{{hostUrl}}/portal`.
 
 > Los health checks (`/health/live`, `/health/ready`) están fuera de `/api/v1`: usa `{{hostUrl}}`, no `{{baseUrl}}`. Si eres el anfitrión trabajando en local, consulta [la sección Cloudflare del README](../README.md#exponer-la-api-con-cloudflare-tunnel); los comandos de arranque son solo para ti.
 
 ## Flujo recomendado de ejecución
 
-1. **Health › Liveness / Readiness**. Están fuera del prefijo `/api/v1`, por eso usan `{{hostUrl}}` y no `{{baseUrl}}`.
+1. **Health › Liveness / Readiness**. Están fuera del prefijo `/api/v1`, por eso usan `{{hostUrl}}` y no `{{baseUrl}}`. Con la URL pegada en `tunnelUrl`, el pre-request ya las derivó.
 2. **Auth › Login** (primero, siempre). Usa las credenciales de desarrollo del environment y guarda `accessToken`, `refreshToken` y `userId` en los scripts de test. Sin este paso, los requests con Bearer devuelven 401.
-3. Opcional: **Auth › Refresh** guarda el nuevo par de tokens y comprueba que el refresh rotó. Recuerda que el token anterior queda revocado.
-4. **Spaces & Roles › Crear espacio de equipo** guarda `spaceId` (el creador queda como `ADMINISTRADOR`).
-5. **Categories › Crear categoría** guarda `categoryId` y `version`.
-6. **Products › Crear producto** guarda `productId` y `version` (usa `{{categoryId}}`).
-7. **Notes › Crear nota**, **Tasks › Crear tarea**, **Files › Subir archivo** (selecciona un archivo local en *Body → form-data*, campo `file`).
-8. Edita con los requests **Editar … (usa `{{version}}`)**; la versión se actualiza sola tras cada PATCH.
-9. Los requests **… con versión obsoleta (409)** envían `version: 999` y validan `409` con `error.code = VERSION_CONFLICT` y `requestId`.
-10. Los listados validan la forma `{ data: [...], meta: { page, limit, total, totalPages } }`. Los detalles validan `{ data }`.
+3. **Portal › Manifiesto** (con Bearer): valida el JSON con `JSON.parse`, comprueba los 12 escenarios y los niveles 0-6, y deja `tunnelUrl`/`hostUrl`/`baseUrl`/`wsBaseUrl` apuntando a la URL vigente. Es la forma de confirmar que una sola URL bastó.
+4. Opcional: **Auth › Refresh** guarda el nuevo par de tokens y comprueba que el refresh rotó. Recuerda que el token anterior queda revocado.
+5. **Spaces & Roles › Crear espacio de equipo** guarda `spaceId` (el creador queda como `ADMINISTRADOR`).
+6. **Categories › Crear categoría** guarda `categoryId` y `version`.
+7. **Products › Crear producto** guarda `productId` y `version` (usa `{{categoryId}}`).
+8. **Notes › Crear nota**, **Tasks › Crear tarea**, **Files › Subir archivo** (selecciona un archivo local en *Body → form-data*, campo `file`).
+9. Edita con los requests **Editar … (usa `{{version}}`)**; la versión se actualiza sola tras cada PATCH.
+10. Los requests **… con versión obsoleta (409)** envían `version: 999` y validan `409` con `error.code = VERSION_CONFLICT` y `requestId`.
+11. Los listados validan la forma `{ data: [...], meta: { page, limit, total, totalPages } }`. Los detalles validan `{ data }`.
 
 > Los IDs y las versiones **se autopueblan** con los scripts de test: si hay un environment seleccionado escriben ahí; si no, escriben en las variables de la collection. No ejecutes PATCH/DELETE antes de los correspondientes POST.
 
@@ -72,7 +75,7 @@ La carpeta **Cart & Orders** sigue este orden (usa el `productId` autopoblado po
 La carpeta **Portal** contiene los requests de la UI disponible en `{{hostUrl}}/portal` (URL pública):
 
 1. **UI del portal · GET {{hostUrl}}/portal** (sin Bearer) comprueba que la página HTML se sirve desde la propia app.
-2. **Manifiesto** expone `apiBaseUrl`, `swaggerUrl`, descargas, los 12 escenarios reales y los niveles 0-6.
+2. **Manifiesto** (requiere Bearer) expone `baseUrl`/`tunnelUrl`/`wsBaseUrl` con la URL vigente, `apiBaseUrl`, `swaggerUrl`, descargas, los 12 escenarios reales y los niveles 0-6. Su script valida el JSON con `JSON.parse` y autoconfigura las cuatro variables de URL con `setVar`, desde `data.baseUrl`.
 3. **Espacios seleccionables** autopuebla `portalSpaceId` con el espacio activo (personal por defecto). Para crear un sandbox o un equipo usa los requests existentes de **Spaces & Roles › Crear sandbox anónimo / Crear espacio de equipo**.
 4. **Guía**, **Descargar collection** y **Descargar environment** devuelven archivos (Markdown/JSON). **Requieren `Authorization: Bearer`**: el portal los obtiene con `fetch` y un `Blob`, porque un enlace `<a>` normal no envía la cabecera. En Postman usa los requests de la carpeta; el body se descarga con *Save response → Save to a file* o se valida con el script de test.
 5. **Mis correos · GET {{baseUrl}}/mail/me** muestra la bandeja **solo del usuario autenticado**. El backend filtra por `to:<email>` y vuelve a comprobar los destinatarios; la UI completa de Mailpit no está expuesta. Los mensajes no incluyen cuerpo ni `snippet` (evitan filtrar tokens de verificación/recuperación).
@@ -96,26 +99,24 @@ La carpeta **Portal** contiene los requests de la UI disponible en `{{hostUrl}}/
 
 ## Solo anfitrión: puerto local
 
-> Esto **no aplica al estudiante**, que solo usa la URL pública. El `docker-compose` publica la app en `http://localhost:3100` porque `.env` define `APP_HOST_PORT=3100`; `PUBLIC_BASE_URL` debe ser la **raíz pública sin `/api/v1`** porque el código añade el sufijo. Si el anfitrión cambia el puerto local, ajusta en su copia:
-
-- `baseUrl` → `http://localhost:<PUERTO>/api/v1`
-- `hostUrl` → `http://localhost:<PUERTO>` (para `/health/live` y `/health/ready`)
+> Esto **no aplica al estudiante**, que solo usa la URL pública. El `docker-compose` publica la app en `http://localhost:3100` porque `.env` define `APP_HOST_PORT=3100`; `PUBLIC_BASE_URL` es la **raíz pública sin `/api/v1`** porque el código añade el sufijo. Si el anfitrión cambia el puerto local, pega `http://localhost:<PUERTO>` en `tunnelUrl`: las cuatro variables se derivan (`baseUrl` → `http://localhost:<PUERTO>/api/v1`, `hostUrl` → `http://localhost:<PUERTO>`, `wsBaseUrl` → `ws://localhost:<PUERTO>`). No hay túnel, así que la app usa `PUBLIC_BASE_URL` como fallback.
 
 Para estudiantes, vuelve a las variables públicas del apartado [Importar](#importar).
 
 ## Usar la URL pública de Cloudflare Tunnel
 
-> **Solo anfitrión/profesor:** los estudiantes no ejecutan estos comandos; solo reciben la URL impresa y actualizan sus variables de Postman. Ver [Flujo del estudiante](#flujo-del-estudiante-sin-instalación).
+> **Solo anfitrión/profesor:** los estudiantes no ejecutan estos comandos; solo reciben la URL impresa, la pegan en `tunnelUrl` y ejecutan el manifiesto. Ver [Flujo del estudiante](#flujo-del-estudiante-sin-instalación).
 
 El script `scripts/start-with-public-url.mjs` crea un **quick tunnel anónimo** con `cloudflared tunnel --url http://127.0.0.1:$PORT` y muestra una URL temporal `https://xxxx.trycloudflare.com` (cambia en cada ejecución; no usa tokens ni config de Cloudflare). Si arrancas con `./start.sh`, al terminar el arranque te pregunta si quieres abrir el túnel y lo apunta a `APP_HOST_PORT`. Si respondes `N` (o no hay terminal interactiva), ábrelo a mano: `cloudflared tunnel --url http://127.0.0.1:3100` (3100 = `APP_HOST_PORT` de ejemplo).
 
+Cuando el script detecta la URL la escribe en `run/tunnel-url.txt` (texto plano, una sola línea, raíz sin `/api/v1`). La app lo lee en runtime (bind mount `./run:/app/run:ro` en Docker), así que **no editas `.env` ni reinicias**. Al cerrar el túnel el archivo se borra; si no existe o es inválido, la app usa `PUBLIC_BASE_URL` (raíz, sin `/api/v1`) como siempre.
+
 Con la URL impresa en la terminal:
 
-1. Pégala en `tunnelUrl` (viene con el placeholder `https://<TU-TUNNEL>.trycloudflare.com`; **no es una URL real**).
-2. Copia la misma URL en `hostUrl` (para `/health/live`, `/health/ready`, `/docs` y `/portal`).
-3. Copia la misma URL **más `/api/v1`** en `baseUrl`: `https://xxxx.trycloudflare.com/api/v1`.
-4. Copia la raíz con `wss://` en `wsBaseUrl` para Socket.IO: `wss://xxxx.trycloudflare.com`.
-5. Repite los pasos 1-4 cada vez que el túnel genere una URL nueva (compártela con tus estudiantes). Si quieres que los enlaces de correos y el manifiesto del portal usen la URL pública, pon `PUBLIC_BASE_URL=https://xxxx.trycloudflare.com` en `.env` (**sin `/api/v1`**) y reinicia la app.
+1. Compártela con los estudiantes. Ellos la pegan en `tunnelUrl` (el valor del archivo es solo un placeholder, **no es una URL real**).
+2. Los scripts de la collection derivan `hostUrl`, `baseUrl` y `wsBaseUrl` antes de cada request; **Portal › Manifiesto** las refresca desde `data.baseUrl`.
+3. Si el túnel genera una URL nueva, comparte la nueva: los estudiantes repiten el paso 1 y ejecutan el manifiesto. No hay que tocar los otros campos ni `PUBLIC_BASE_URL`.
+4. Si cierras el túnel con `SIGKILL`, el archivo puede quedar stale: `rm run/tunnel-url.txt` para volver al fallback.
 
 Los correos de prueba **siguen en local**: la UI de Mailpit es solo `http://127.0.0.1:8025` y no se expone; los estudiantes ven los suyos con `GET {{baseUrl}}/mail/me` en el portal. El túnel solo transporta peticiones HTTP: PostgreSQL, Redis, `.env`, tokens y archivos de configuración de cloudflared nunca se publican; los datos permanecen en los volúmenes Docker de tu máquina. Comparte la URL solo con tus estudiantes y rota el túnel (reinícialo) si se filtra. Ver más en el [README principal](../README.md#exponer-la-api-con-cloudflare-tunnel).
 

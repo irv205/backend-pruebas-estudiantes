@@ -36,3 +36,6 @@ backups/
 
 # Subidas en tiempo de ejecución (almacenamiento local de archivos)
 storage/uploads/*
+
+# URL pública efímera del túnel de Cloudflare (local, nunca versionada)
+/run/

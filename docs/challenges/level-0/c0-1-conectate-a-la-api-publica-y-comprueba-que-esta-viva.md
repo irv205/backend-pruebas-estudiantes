@@ -2,7 +2,7 @@
 
 [Índice de la guía](../../coding-challenges.md)
 
-> **URLs:** usa la URL pública de Cloudflare que te entregue el profesor. Si eres el anfitrión y trabajas localmente, consulta la sección [Cloudflare Tunnel](../../../README.md#exponer-la-api-con-cloudflare-tunnel) del README. Las variables `{{baseUrl}}`, `{{hostUrl}}` y `{{wsBaseUrl}}` deben apuntar a la URL pública: `{{hostUrl}}` y `tunnelUrl` son la raíz (`<URL_PUBLICA>`), `{{baseUrl}}` es `<URL_PUBLICA>/api/v1` y `{{wsBaseUrl}}` es `wss://<host-publico>`. El prefijo `/api/v1` **no** se duplica.
+> **URLs:** usa la URL pública de Cloudflare que te entregue el profesor. Si eres el anfitrión y trabajas localmente, consulta la sección [Cloudflare Tunnel](../../../README.md#exponer-la-api-con-cloudflare-tunnel) del README. Pega esa única URL en `tunnelUrl`: la collection deriva `{{hostUrl}}` (raíz), `{{baseUrl}}` (raíz + `/api/v1`) y `{{wsBaseUrl}}` (`wss://<host-publico>`), y **Portal › Manifiesto** las refresca. El prefijo `/api/v1` **no** se duplica.
 > **Convención:** `TOKEN` es tu `accessToken`, `<uuid>` un identificador real copiado de una respuesta y `<spaceId>` el UUID de tu sandbox o equipo.
 
 ---
@@ -11,9 +11,9 @@
 
 **Antes de empezar**
 
-1. Recibe del profesor la URL pública, p. ej. `https://<TU-TUNNEL>.trycloudflare.com`. Es temporal y aleatoria: **cambia en cada ejecución** del túnel. Si el profesor reinicia el túnel, actualiza las variables.
+1. Recibe del profesor la URL pública, p. ej. `https://<TU-TUNNEL>.trycloudflare.com`. Es temporal y aleatoria: **cambia en cada ejecución** del túnel. Si el profesor la reinicia, pega la nueva en `tunnelUrl` y ejecuta el manifiesto.
 2. Importa la colección y el environment de Postman siguiendo [postman/README.md](../../../postman/README.md).
-3. Configura el environment: `tunnelUrl = <URL_PUBLICA>` (solo la raíz), `hostUrl = <URL_PUBLICA>` y `baseUrl = <URL_PUBLICA>/api/v1`. `PUBLIC_BASE_URL` es ajuste del anfitrión y también se escribe sin `/api/v1`.
+3. Configura el environment pegando la URL **solo en `tunnelUrl`** (la raíz, sin `/api/v1`). `hostUrl`, `baseUrl` y `wsBaseUrl` se derivan automáticamente; ejecuta **Portal › Manifiesto** para verificarlas. `PUBLIC_BASE_URL` es solo el fallback del anfitrión y no lo necesitas.
 
 **Endpoints exactos**
 

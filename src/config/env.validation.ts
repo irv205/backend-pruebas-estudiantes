@@ -36,7 +36,12 @@ export const envValidationSchema = Joi.object({
   // Opcional: por defecto se deriva de SMTP_HOST (http://<host>:8025/api/v1).
   MAILPIT_API_URL: Joi.string().uri({ scheme: ['http', 'https'] }).allow('').optional(),
 
+  // Raíz pública usada SOLO como fallback (el código añade /api/v1).
   PUBLIC_BASE_URL: Joi.string().uri({ scheme: ['http', 'https'] }).default('http://localhost:3000'),
+  // Archivo efímero escrito por el túnel. Relativo al cwd (/app en Docker).
+  PUBLIC_URL_FILE: Joi.string().allow('').default('./run/tunnel-url.txt'),
+  // Escape para e2e / entornos donde un archivo local no debe aplicar.
+  PUBLIC_URL_FILE_DISABLED: Joi.boolean().default(false),
 
   DEMO_SPACE_SLUG: Joi.string().default('demo-publico'),
   SANDBOX_TTL_HOURS: Joi.number().integer().min(1).default(72),

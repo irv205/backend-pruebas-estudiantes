@@ -47,6 +47,12 @@ describe('Portal del estudiante (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     const data = res.body.data;
+    // Campos nuevos (raíz única + WS) sin romper los contratos existentes.
+    expect(data.baseUrl).toMatch(/^https?:\/\//);
+    expect(data.baseUrl).not.toContain('/api/v1');
+    expect(data.tunnelUrl).toBe(data.baseUrl);
+    expect(data.wsBaseUrl).toMatch(/^(wss?):\/\//);
+    expect(data.apiBaseUrl).toBe(`${data.baseUrl}/api/v1`);
     expect(data.apiBaseUrl).toContain('/api/v1');
     expect(data.swaggerUrl).toContain('/docs');
     expect(data.downloads.collection).toContain('/portal/postman/collection');

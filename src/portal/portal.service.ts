@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SpaceType } from '@prisma/client';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { PublicUrlService } from '../common/public-url.service';
 import { AuthUser } from '../common/types/auth-user';
 import { DEMO_SPACE_SLUG } from '../database/demo-data';
 import { PrismaService } from '../prisma/prisma.service';
@@ -42,14 +43,20 @@ export class PortalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly publicUrls: PublicUrlService,
   ) {}
 
   /** Manifiesto público para el portal: URLs base, descargas, retos y escenarios. */
   manifest() {
-    const base = this.config.getOrThrow<string>('PUBLIC_BASE_URL').replace(/\/$/, '');
+    // URL vigente del túnel (archivo local) o fallback a PUBLIC_BASE_URL.
+    const base = this.publicUrls.getBaseUrl();
     return {
       data: {
-        apiBaseUrl: `${base}/api/v1`,
+        // Campos nuevos: una sola raíz para que Postman derive el resto.
+        baseUrl: base,
+        tunnelUrl: base,
+        wsBaseUrl: this.publicUrls.getWsBaseUrl(),
+        apiBaseUrl: this.publicUrls.getApiBaseUrl(),
         swaggerUrl: `${base}/docs`,
         portalUrl: `${base}/portal`,
         healthUrls: [`${base}/health/live`, `${base}/health/ready`],

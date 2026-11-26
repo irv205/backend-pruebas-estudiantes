@@ -13,6 +13,9 @@
  *   SKIP_BUILD=1         No compila aunque falte dist (fallará si no existe).
  *   PUBLIC_URL_AUTO=1    Genera el túnel sin preguntar.
  *   SKIP_PUBLIC_URL=1    No genera túnel ni pregunta.
+ *   PUBLIC_URL_FILE      Ruta del archivo local donde se publica la URL detectada
+ *                        (default: run/tunnel-url.txt, relativa a la raíz del repo).
+ *                        La app lo lee en runtime; se borra al cerrar el túnel.
  *   --restart            Mata el proceso previo que escuche en PORT antes de arrancar.
  *   --build              Fuerza compilación.
  *   --no-build           No compila.
@@ -30,6 +33,14 @@ import { execSync } from 'node:child_process';
 const ROOT = process.cwd();
 const DIST_MAIN = path.join(ROOT, 'dist', 'main.js');
 const ENV_FILE = path.join(ROOT, '.env');
+// La URL pública se propaga a la app mediante un archivo local efímero.
+// Formato: TEXTO PLANO con una sola línea = la URL raíz (sin /api/v1).
+// Se resuelve en cada uso porque loadEnvFile() se ejecuta más abajo.
+function tunnelUrlFilePath() {
+  const configured = process.env.PUBLIC_URL_FILE || 'run/tunnel-url.txt';
+  return path.isAbsolute(configured) ? configured : path.join(ROOT, configured);
+}
+let tunnelUrlFileWritten = false;
 
 // ---------- utilidades ----------
 function loadEnvFile() {
@@ -50,6 +61,37 @@ function loadEnvFile() {
 function log(msg) { process.stdout.write(`[public-url] ${msg}\n`); }
 function warn(msg) { process.stderr.write(`[public-url] AVISO: ${msg}\n`); }
 function err(msg) { process.stderr.write(`[public-url] ERROR: ${msg}\n`); }
+
+/**
+ * Publica la URL detectada para que la app la lea en runtime (texto plano,
+ * solo la raíz, sin /api/v1). Nunca incluye tokens ni credenciales.
+ */
+function writeTunnelUrl(url) {
+  const file = tunnelUrlFilePath();
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // 0644: la URL es pública (ya se imprime) y debe poder leerla un
+    // contenedor que no corre como root (etapa production del Dockerfile).
+    fs.writeFileSync(file, `${url}\n`, { encoding: 'utf8', mode: 0o644 });
+    tunnelUrlFileWritten = true;
+    log(`URL propagada a ${path.relative(ROOT, file) || file} (la app la usa sin reiniciar).`);
+  } catch (e) {
+    warn(`No se pudo escribir ${file}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** Borra la URL publicada para no dejar enlaces muertos tras cerrar el túnel. */
+function removeTunnelUrl() {
+  if (!tunnelUrlFileWritten) return;
+  tunnelUrlFileWritten = false;
+  const file = tunnelUrlFilePath();
+  try {
+    fs.rmSync(file, { force: true });
+    log('Archivo de URL pública eliminado (no quedan URLs muertas).');
+  } catch (e) {
+    warn(`No se pudo borrar ${file}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
 
 function hasBin(name) {
   try {
@@ -255,6 +297,8 @@ if (wantTunnel) {
         process.stdout.write(`  API:      ${tunnelUrl}/api/v1\n`);
         process.stdout.write(`  Health:   ${tunnelUrl}/health/ready\n`);
         process.stdout.write('  Nota: URL temporal, cambia en cada ejecución; sin autenticación; no usar en producción.\n\n');
+        writeTunnelUrl(tunnelUrl);
+        process.stdout.write('  Postman: pega esta URL en `tunnelUrl` y ejecuta Portal › Manifiesto.\n\n');
       }
     };
     tunnel.stdout.on('data', handleChunk);
@@ -267,10 +311,12 @@ if (wantTunnel) {
         err(`cloudflared terminó sin exponer una URL (código ${code}${signal ? ', señal ' + signal : ''}).`);
         warn('Revisa la salida anterior. El backend sigue disponible localmente.');
       }
+      removeTunnelUrl();
       tunnel = null;
     });
     tunnel.on('error', (e) => {
       err(`No se pudo lanzar cloudflared: ${e.message}`);
+      removeTunnelUrl();
       tunnel = null;
     });
   }
@@ -279,6 +325,7 @@ if (wantTunnel) {
 // Mantener vivo
 function cleanup() {
   log('Cerrando procesos...');
+  removeTunnelUrl();
   if (tunnel) { try { tunnel.kill('SIGTERM'); } catch {} }
   if (backend && !backendExited) { try { backend.kill('SIGTERM'); } catch {} }
   // dar tiempo a terminar
@@ -287,11 +334,14 @@ function cleanup() {
 
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
+// Red de seguridad: si el proceso termina por otra vía, no dejamos URL muerta.
+process.on('exit', removeTunnelUrl);
 
 // Si el backend directo muere, cerrar el túnel y salir.
 // En --tunnel-only no hay backend propio: el de Docker sigue vivo.
 if (backend) {
   backend.on('exit', () => {
+    removeTunnelUrl();
     if (tunnel) { try { tunnel.kill('SIGTERM'); } catch {} }
     setTimeout(() => process.exit(0), 500);
   });
