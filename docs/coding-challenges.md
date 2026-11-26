@@ -2,7 +2,7 @@
 
 Esta guía es tu hoja de ruta para practicar integración de clientes (web, Android, iOS o escritorio) contra el backend de prácticas. Cada desafío se puede resolver **con la colección de Postman o con `curl`**: no necesitas permisos especiales ni tocar el código del servidor.
 
-> **Estado real del backend:** Etapas **1, 2, 3 y 4 implementadas**. Los niveles 5 (carrito, pedidos, pagos e idempotencia) y 6 (WebSocket, notificaciones y exportaciones) **están disponibles**. Sigue pendiente el portal del estudiante (UI) y las guías cliente JS/Kotlin/Retrofit.
+> **Estado real del backend:** Etapas **1, 2, 3 y 4 implementadas**. Los niveles 5 (carrito, pedidos, pagos e idempotencia) y 6 (WebSocket, notificaciones y exportaciones) **están disponibles**. El [portal del estudiante](http://localhost:3100/portal) permite hacer todo el flujo desde el navegador; las guías cliente JS/Kotlin/Retrofit completas siguen pendientes (el portal incluye ejemplos resumidos).
 
 ---
 
@@ -49,6 +49,7 @@ Espera a que `start.sh` / `start.ps1` termine: ejecuta migraciones, espera `GET 
 | Swagger UI | `http://localhost:3100/docs` |
 | Health (fuera de `/api/v1`) | `http://localhost:3100/health/live` y `http://localhost:3100/health/ready` |
 | Mailpit (solo en el host) | `http://127.0.0.1:8025` |
+| Portal del estudiante | `http://localhost:3100/portal` |
 
 **Usuario de prueba del seed (solo desarrollo):**
 
@@ -58,6 +59,18 @@ password: Estudiante.123
 ```
 
 Si tu `.env` usa otro puerto, cambia `3100` por `APP_HOST_PORT` en todos los ejemplos.
+
+### Portal del estudiante (Nivel 0)
+
+Abre **`http://localhost:3100/portal`** y entra con el usuario de prueba. La UI usa el mismo flujo web de cookies `HttpOnly` + CSRF; el access token se conserva solo en memoria del navegador. Desde el portal puedes:
+
+- Ver la URL base de la API, Swagger, la colección/environment de Postman y la guía completa (`GET /api/v1/portal/manifest`).
+- Listar y seleccionar tu espacio personal, equipos, la demo pública o un sandbox anónimo; crear sandbox/equipo y ver el `spaceId` activo (`GET /api/v1/portal/spaces` y los endpoints existentes de `/spaces` y `/public/sandboxes`).
+- Reiniciar el espacio con confirmación (en la demo, restaurar los datos iniciales) y activar/desactivar los **12 escenarios** reales por espacio (`GET/PATCH /spaces/me/scenarios` o `/spaces/:spaceId/scenarios`).
+- Ver **solo tus correos de prueba** en el panel *Mis correos de prueba*: el backend media con `GET /api/v1/mail/me`, filtra por tu correo y no muestra la UI de Mailpit ni los cuerpos de los mensajes. Para generar uno, ejecuta *Auth › Forgot password* o registra otro usuario y vuelve a cargar la bandeja.
+- Seguir los niveles 0-6 con ejemplos `curl`, JavaScript y Kotlin; la guía completa se abre desde el enlace *Guía*.
+
+> En el Nivel 4 localiza el panel **Simulador**: ahí se activan los escenarios que luego usarás en los niveles 5 y 6 (por ejemplo `duplicateOrder` y `failedAsyncJob`). Desactívalos al terminar.
 
 ### Importar Postman
 
@@ -101,7 +114,7 @@ El propietario de un equipo siempre es `ADMINISTRADOR`; `LECTOR` solo consulta, 
 
 Disponibles (Etapas 1-2): health, auth, users, spaces/roles, categories, products y public/products, notes, tasks/subtasks, files (multipart) y simulator.
 
-Disponibles desde la Etapa 3: carrito, pedidos, pagos simulados e idempotencia (Nivel 5). Disponibles desde la Etapa 4 (Nivel 6): notificaciones, WebSocket/chat con replay, export jobs con worker/Redis y login web con cookies `HttpOnly` + CSRF. Sigue pendiente el portal del estudiante (UI) y las guías cliente JS/Kotlin/Retrofit.
+Disponibles desde la Etapa 3: carrito, pedidos, pagos simulados e idempotencia (Nivel 5). Disponibles desde la Etapa 4 (Nivel 6): notificaciones, WebSocket/chat con replay, export jobs con worker/Redis y login web con cookies `HttpOnly` + CSRF. El portal del estudiante reúne todos esos flujos en `http://localhost:3100/portal`; las guías cliente JS/Kotlin/Retrofit completas siguen pendientes.
 
 ---
 

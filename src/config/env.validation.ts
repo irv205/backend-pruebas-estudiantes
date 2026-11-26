@@ -33,6 +33,8 @@ export const envValidationSchema = Joi.object({
   SMTP_HOST: Joi.string().default('mailpit'),
   SMTP_PORT: Joi.number().port().default(1025),
   SMTP_FROM: Joi.string().default('Backend Prácticas <no-reply@practicas.local>'),
+  // Opcional: por defecto se deriva de SMTP_HOST (http://<host>:8025/api/v1).
+  MAILPIT_API_URL: Joi.string().uri({ scheme: ['http', 'https'] }).allow('').optional(),
 
   PUBLIC_BASE_URL: Joi.string().uri({ scheme: ['http', 'https'] }).default('http://localhost:3000'),
 

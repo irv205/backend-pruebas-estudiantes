@@ -36,6 +36,10 @@ RUN addgroup -S nodejs && adduser -S nestjs -G nodejs
 COPY --from=prod-deps --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=full-deps --chown=nestjs:nodejs /app/prisma ./prisma
+# Portal (HTML/CSS/JS vanilla), guía y JSON de Postman servidos por la API.
+COPY --chown=nestjs:nodejs public ./public
+COPY --chown=nestjs:nodejs docs ./docs
+COPY --chown=nestjs:nodejs postman ./postman
 COPY --chown=nestjs:nodejs package.json ./
 USER nestjs
 EXPOSE 3000

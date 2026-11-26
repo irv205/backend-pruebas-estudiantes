@@ -13,6 +13,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { MailModule } from './mail/mail.module';
 import { NotesModule } from './notes/notes.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PortalModule } from './portal/portal.module';
 import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
@@ -51,6 +52,7 @@ import { WebAuthModule } from './web-auth/web-auth.module';
     NotificationsModule,
     JobsModule,
     WebAuthModule,
+    PortalModule,
   ],
 })
 export class AppModule implements NestModule {

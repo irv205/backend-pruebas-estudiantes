@@ -1,5 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { join } from 'path';
 import { validationExceptionFactory } from './common/validation/validation-exception';
 
 /**
@@ -8,8 +10,18 @@ import { validationExceptionFactory } from './common/validation/validation-excep
  * Se mantiene fuera de main.ts para que importarlo no arranque un servidor.
  */
 export function configureApp(app: INestApplication): void {
-  // Contrato §9: /api/v1 para la API; /health queda fuera del prefijo.
-  app.setGlobalPrefix('api/v1', { exclude: ['health', 'health/(.*)'] });
+  // Contrato §9: /api/v1 para la API; /health y la página /portal quedan fuera.
+  // La exclusión de 'portal' es exacta: /api/v1/portal/* conserva el prefijo.
+  app.setGlobalPrefix('api/v1', { exclude: ['health', 'health/(.*)', 'portal'] });
+
+  // Portal del estudiante: HTML/CSS/JS vanilla servidos por la propia app.
+  // `index: false` deja que el controlador responda GET /portal con el index.
+  (app as NestExpressApplication).useStaticAssets(join(__dirname, '..', 'public', 'portal'), {
+    prefix: '/portal',
+    index: false,
+    redirect: false,
+    fallthrough: true,
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -48,9 +60,10 @@ export function configureApp(app: INestApplication): void {
         '`Authorization: Bearer <accessToken>` para el espacio personal. Incluye categorías, ' +
         'tareas, roles, archivos (S3/MinIO o local), carrito, pedidos con stock transaccional, ' +
         'pagos simulados, idempotencia, simulador de escenarios, notificaciones, chat/WebSocket, ' +
-      'exportaciones asíncronas (Redis/BullMQ con fallback inline) y login web con cookies HttpOnly + CSRF.',
+        'exportaciones asíncronas (Redis/BullMQ con fallback inline), login web con cookies HttpOnly + CSRF ' +
+        'y el portal del estudiante (UI en /portal, manifiesto/descargas autorizadas y bandeja propia mediada).',
     )
-    .setVersion('4.0.0')
+    .setVersion('4.1.0')
     .addBearerAuth()
     .addApiKey({ type: 'apiKey', name: 'x-space-id', in: 'header' }, 'space-id')
     .addApiKey({ type: 'apiKey', name: 'Idempotency-Key', in: 'header' }, 'idempotency-key')

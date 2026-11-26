@@ -1,6 +1,6 @@
 # Backend de práctica para estudiantes — Etapas 1 a 4
 
-API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL**, ejecutada con **Docker Compose**. La Etapa 2 añade **categorías, archivos, tareas, roles de equipo y simulador**; la Etapa 3, **carrito, pedidos transaccionales, pagos simulados e idempotencia**; la Etapa 4 añade **notificaciones, WebSocket/chat con replay, exportaciones asíncronas (Redis/BullMQ + worker) y login web con cookies HttpOnly + CSRF**.
+API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL**, ejecutada con **Docker Compose**. La Etapa 2 añade **categorías, archivos, tareas, roles de equipo y simulador**; la Etapa 3, **carrito, pedidos transaccionales, pagos simulados e idempotencia**; la Etapa 4 añade **notificaciones, WebSocket/chat con replay, exportaciones asíncronas (Redis/BullMQ + worker) y login web con cookies HttpOnly + CSRF**. El **portal del estudiante** (`http://localhost:3100/portal`) es una UI vanilla servida por la propia aplicación y reutiliza esos endpoints.
 
 > **Persistencia: código vs datos.** El código fuente vive en este repositorio Git (`.gitignore` excluye `node_modules`, `dist`, `.env` y backups; `.gitattributes` fuerza `eol=lf` en `*.sh`/`*.bash` y `eol=crlf` en `*.ps1`/`*.cmd`). Docker guarda la **ejecución** y los **datos**: PostgreSQL, Redis, Mailpit y el almacenamiento de archivos usan **volúmenes nombrados** (`postgres_data`, `redis_data`, `mailpit_data`, `files_data` y `minio_data`, reservado). Borrar contenedores no borra volúmenes.
 
@@ -185,6 +185,7 @@ Las URLs de la API usan el puerto host configurado en `APP_HOST_PORT` (`3100` en
 | Swagger UI | `http://localhost:${APP_HOST_PORT:-3100}/docs` |
 | Liveness / Readiness | `http://localhost:${APP_HOST_PORT:-3100}/health/live`, `/health/ready` |
 | UI de Mailpit (solo host) | `http://127.0.0.1:8025` |
+| Portal del estudiante | `http://localhost:${APP_HOST_PORT:-3100}/portal` |
 
 ```
 email:    estudiante@practicas.local
@@ -194,6 +195,36 @@ password: Estudiante.123
 > **Credencial SOLO de desarrollo / práctica; no usar en producción.** La crea el seed y sirve para probar la API. Cámbiala o elimínala antes de desplegar.
 
 > Nota operativa: si el puerto host `3000` está ocupado por otro proyecto, **no lo detengas**. Este workspace define `APP_HOST_PORT=3100` en `.env` (y en `.env.example`) y el compose publica `3100:3000` sin tocar el contenedor ajeno. Los scripts usan `3000` solo como respaldo si la variable no existe.
+
+## Portal del estudiante
+
+URL: **`http://localhost:3100/portal`** (sustituye `3100` por `APP_HOST_PORT` si cambiaste el puerto). Es HTML/CSS/JavaScript **vanilla**, servido por la propia NestJS en `/portal` con assets en `/portal/assets/...`; no usa frameworks ni CDN y no interfiere con `/docs`, `/health/*` ni `/api/v1`.
+
+Qué permite:
+
+- **Login web** con el flujo existente `POST /api/v1/auth/web/login` (cookies `HttpOnly` + CSRF), renovación automática con `POST /auth/web/refresh` y cierre de sesión con `POST /auth/web/logout`. El **access token y el token CSRF se guardan solo en memoria** del navegador: nunca en `localStorage`/`sessionStorage`. Las mutaciones con Bearer no necesitan CSRF; `refresh`/`logout` envían `X-CSRF-Token` (si se perdió tras recargar, se obtiene con `GET /auth/csrf`).
+- **Información base**: URL de la API, Swagger, descargas de la collection y el environment de Postman y guía Markdown.
+- **Espacios**: listado (personal, equipos del usuario y demo pública), selección, creación de sandbox anónimo y de equipo, y visualización del `spaceId` activo.
+- **Datos iniciales / reset**: reinicio del espacio activo con confirmación. Reutiliza `POST /spaces/me/reset`, `POST /spaces/:spaceId/reset` y `POST /public/sandboxes/:spaceId/reset`. En la demo pública ese reset **restaura los datos canónicos del seed**; no borra volúmenes ni la base completa.
+- **Simulador**: las 12 claves reales (`slowResponse` … `failedAsyncJob`), activables por espacio con `GET/PATCH /spaces/me/scenarios` (personal) o `GET/PATCH /spaces/:spaceId/scenarios` (equipo, solo `ADMINISTRADOR`). En sandbox/demo se muestran deshabilitadas porque no hay memberships.
+- **Correos propios**: bandeja mediada por `GET /api/v1/mail/me`. El backend consulta la API interna de Mailpit con `to:<email del usuario>` y **filtra de nuevo** por los destinatarios antes de responder. Nunca se expone la UI de Mailpit (`127.0.0.1:8025` sigue siendo solo host) ni se devuelven cuerpos/snippets, porque contienen tokens de verificación/recuperación.
+- **Ejercicios**: resumen de los niveles 0-6 de `docs/coding-challenges.md` con ejemplos `curl`, JavaScript y Kotlin, y enlace a la guía completa.
+
+Endpoints nuevos del portal (todos requieren `Authorization: Bearer <accessToken>`, salvo la página):
+
+| Método | Ruta | Uso |
+|---|---|---|
+| `GET` | `/portal` | Página HTML (fuera de `/api/v1`, sin autenticación). |
+| `GET` | `/api/v1/portal/manifest` | URLs base, Swagger, descargas, 12 escenarios y niveles 0-6. |
+| `GET` | `/api/v1/portal/spaces` | Espacios seleccionables y `spaceId` activo. |
+| `GET` | `/api/v1/portal/guide` | Guía de challenges en Markdown (`text/markdown`). |
+| `GET` | `/api/v1/portal/postman/collection` | Descarga autorizada del JSON de la collection. |
+| `GET` | `/api/v1/portal/postman/environment` | Descarga autorizada del JSON del environment. |
+| `GET` | `/api/v1/mail/me` | Correos de prueba **solo del usuario autenticado**. |
+
+> Los enlaces de descarga y de guía del portal se resuelven con `fetch` + Bearer y se entregan como `Blob`: un `<a href>` normal no enviaría la cabecera. No existe acceso directo al filesystem ni a la UI de Mailpit desde el navegador del estudiante. El manifiesto incluye `error.code`, `message` y `requestId` en cualquier fallo (mostrados en la UI).
+
+> `MAILPIT_API_URL` (opcional) permite fijar la API interna de Mailpit; por defecto se deriva como `http://${SMTP_HOST}:8025/api/v1` (en Compose, `http://mailpit:8025/api/v1`). Ver [variables nuevas de la Etapa 4](#variables-nuevas-de-la-etapa-4).
 
 ## Secretos y seguridad
 
@@ -232,8 +263,8 @@ El puerto publicado se controla únicamente con `APP_HOST_PORT` en `.env` (en es
 1. Abre Postman → **Import → Upload Files** y selecciona `postman/backend-practicas.postman_collection.json` y `postman/backend-practicas.postman_environment.json`.
 2. Selecciona el environment **Backend Prácticas - Local (desarrollo)** y comprueba `baseUrl = http://localhost:3100/api/v1` y `hostUrl = http://localhost:3100` (cámbialos si usas otro puerto).
 3. Ejecuta primero **Health › Readiness** y luego **Auth › Login**: los scripts autopueblan `accessToken`, IDs y `version`. Si no hay login, las peticiones con Bearer devuelven 401.
-4. Detalles, flujo recomendado, roles, simulador y Etapa 3: [postman/README.md](postman/README.md).
-5. Ejercicios y retos para estudiantes: [docs/coding-challenges.md](docs/coding-challenges.md).
+4. Detalles, flujo recomendado, roles, simulador, Etapa 3 y la nueva carpeta **Portal** (manifiesto, descargas, espacios y bandeja propia): [postman/README.md](postman/README.md).
+5. Ejercicios y retos para estudiantes: [docs/coding-challenges.md](docs/coding-challenges.md). El [portal](#portal-del-estudiante) muestra el mismo resumen con ejemplos.
 
 > El environment trae `initialValue` vacío para `password` y `accessToken`: escríbelos solo en tu copia local y **no exportes el environment con valores reales**.
 
@@ -265,6 +296,7 @@ El puerto publicado se controla únicamente con `APP_HOST_PORT` en `.env` (en es
 | `JOBS_QUEUE_MODE` | `redis` | `redis`: la API encola y el worker procesa; `inline`: la API procesa de forma síncrona (CI/e2e, sin Redis). |
 | `JOBS_RETENTION_HOURS` | `24` | El worker purga exportaciones finalizadas más antiguas y sus objetos al arrancar. |
 | `WORKER_MODE` | `false` | Lo fija Compose en el servicio `worker`; no lo pongas a `true` en la API. |
+| `MAILPIT_API_URL` | `http://${SMTP_HOST}:8025/api/v1` | API interna de Mailpit usada solo por `/api/v1/mail/me`. Opcional; no expone la UI de Mailpit. |
 
 La dependencia de Redis en `app`/`worker` es `required: false`: con `JOBS_QUEUE_MODE=inline` la API arranca aunque Redis esté parado. El worker se declara con la **misma imagen** y `command: ["npm", "run", "worker:dev"]` (en producción, `worker:prod` → `node dist/worker/main.js`). No publica puerto HTTP.
 
@@ -683,7 +715,7 @@ docker compose exec -T -e JOBS_QUEUE_MODE=inline app sh -c \
    DATABASE_URL="$TEST_URL" npm run test:e2e'
 ```
 
-Estado: **15 suites e2e, 87/87 pruebas** (67 de Etapas 1-3 + notificaciones, realtime/chat/replay, jobs inline/descarga/`failedAsyncJob` y cookies/CSRF) y **4 suites unitarias, 9/9**. Los archivos no requieren MinIO en CI: se usa un stub inyectado en el token `STORAGE_PROVIDER`.
+Estado: **16 suites e2e, 93/93 pruebas** (67 de Etapas 1-3 + notificaciones, realtime/chat/replay, jobs inline/descarga/`failedAsyncJob`, cookies/CSRF y portal: `/portal`, assets, manifiesto, descargas, espacios, guía y `/mail/me` con filtro por usuario) y **4 suites unitarias, 9/9**. Los archivos no requieren MinIO en CI: se usa un stub inyectado en el token `STORAGE_PROVIDER`.
 
 > Las e2e se ejecutan **dentro del contenedor `app`** (donde el host `postgres` existe) contra `practicas_test`, como muestra el comando anterior. Nunca apuntes las pruebas a la BD de los estudiantes ni borres volúmenes.
 
@@ -710,6 +742,7 @@ backendPruebas/
 ├── prisma/                         schema.prisma, migrations/, seed.ts
 ├── test/                           suites e2e y utilidades
 ├── docs/                           coding-challenges.md
+├── public/portal/                  UI vanilla del portal (index.html + assets)
 ├── postman/                        collection + environment + README
 ├── storage/uploads/                archivos locales (contenido ignorado por Git)
 ├── package.json, package-lock.json, tsconfig*.json, nest-cli.json, .nvmrc
@@ -735,16 +768,17 @@ src/
   realtime/                                  gateway Socket.IO, chat, replay, emisores de eventos
   jobs/, worker/                             export jobs, cola BullMQ/inline, worker y retención
   web-auth/                                  cookies HttpOnly, CSRF double-submit, login web
-  mail/, database/                           SMTP de pruebas y datos canónicos
+  mail/, database/                           SMTP de pruebas, bandeja mediada y datos canónicos
+  portal/                                    manifest, descargas, guía, página y espacios del portal
 prisma/
   schema.prisma, migrations/ (init, stage2, stage3, stage4), seed.ts
-test/                                       15 suites e2e + utils (JOBS_QUEUE_MODE=inline)
+test/                                       16 suites e2e + utils (JOBS_QUEUE_MODE=inline)
 Dockerfile, docker-compose.yml, .env.example
 ```
 
 ## Pendiente real
 
-- Portal del estudiante (UI) y guías cliente (JS/Kotlin/Retrofit) para el Nivel 5.
+- Guías cliente completas (JS/Kotlin/Retrofit) para el Nivel 5: el portal incluye ejemplos resumidos, no una guía exhaustiva.
 - MinIO sigue comentado (imagen no verificable desde el entorno original); las exportaciones usan storage local.
 - El replay cubre los eventos persistidos por espacio; no hay suscripción selectiva por tipo de recurso.
 

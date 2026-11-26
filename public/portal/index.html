@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Portal del estudiante — Backend de prácticas</title>
+    <link rel="stylesheet" href="/portal/assets/styles.css" />
+    <script src="/portal/assets/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">BP</span>
+        <div>
+          <strong>Portal del estudiante</strong>
+          <small>Backend de prácticas · Etapas 1-4</small>
+        </div>
+      </div>
+      <nav class="topbar-links" aria-label="Enlaces de la API">
+        <span class="pill">API <code id="apiBase">…</code></span>
+        <a id="swaggerLink" href="/docs" target="_blank" rel="noopener">Swagger</a>
+        <a id="collectionLink" href="#" download>Colección Postman</a>
+        <a id="environmentLink" href="#" download>Environment Postman</a>
+        <a id="guideLink" href="#" target="_blank" rel="noopener">Guía</a>
+        <button id="logoutBtn" class="btn btn-ghost" type="button" hidden>Cerrar sesión</button>
+      </nav>
+    </header>
+
+    <main>
+      <div id="errorBanner" class="error-banner" role="alert" hidden></div>
+
+      <section id="authCard" class="card auth-card">
+        <h1>Inicia sesión para practicar</h1>
+        <p>
+          Usa el flujo web con cookies <code>HttpOnly</code> y CSRF. El token de acceso se conserva
+          solo en memoria del navegador: nunca se escribe en <code>localStorage</code>.
+        </p>
+        <form id="loginForm" class="form-row">
+          <label>
+            Correo
+            <input id="email" name="email" type="email" autocomplete="username" required placeholder="estudiante@practicas.local" />
+          </label>
+          <label>
+            Contraseña
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button class="btn btn-primary" type="submit">Entrar</button>
+        </form>
+        <p class="muted">Credencial de desarrollo del seed: <code>estudiante@practicas.local</code> / <code>Estudiante.123</code>.</p>
+      </section>
+
+      <div id="dashboard" hidden>
+        <section class="card session-card">
+          <div>
+            <h1>Hola, <span id="userEmail">estudiante</span></h1>
+            <p class="muted">Todo lo que ves aquí viene de la API en <code id="apiBaseInline">/api/v1</code>.</p>
+          </div>
+          <div class="session-badges">
+            <span class="pill">Espacio activo <code id="activeSpaceId">—</code></span>
+            <span class="pill" id="activeSpaceMeta">—</span>
+          </div>
+        </section>
+
+        <div class="grid">
+          <section class="card" id="spacesCard">
+            <div class="card-head">
+              <h2>Espacios</h2>
+              <span class="tag">personal · equipo · sandbox</span>
+            </div>
+            <p class="muted">Selecciona un espacio para trabajar. El <code>spaceId</code> activo se envía como <code>x-space-id</code> en las rutas públicas.</p>
+            <ul id="spacesList" class="list" aria-live="polite">
+              <li class="muted">Cargando espacios…</li>
+            </ul>
+            <div class="form-row compact">
+              <label>
+                Nombre del equipo
+                <input id="teamName" type="text" placeholder="Mi equipo" minlength="2" maxlength="120" />
+              </label>
+              <button id="createTeamBtn" class="btn" type="button">Crear equipo</button>
+              <button id="createSandboxBtn" class="btn" type="button">Crear sandbox</button>
+              <button id="resetSpaceBtn" class="btn btn-danger" type="button">Reiniciar espacio</button>
+            </div>
+            <p id="spacesHint" class="muted"></p>
+          </section>
+
+          <section class="card" id="simulatorCard">
+            <div class="card-head">
+              <h2>Simulador</h2>
+              <span class="tag">12 escenarios por espacio</span>
+            </div>
+            <p class="muted">Activa o desactiva escenarios y guárdalos en el espacio seleccionado.</p>
+            <div id="scenarioList" class="scenarios" aria-live="polite">
+              <p class="muted">Cargando escenarios…</p>
+            </div>
+            <p id="scenarioStatus" class="status" aria-live="polite"></p>
+          </section>
+
+          <section class="card" id="mailCard">
+            <div class="card-head">
+              <h2>Mis correos de prueba</h2>
+              <span class="tag">filtrados por backend</span>
+            </div>
+            <p class="muted">
+              La API consulta Mailpit y devuelve únicamente los mensajes dirigidos a tu correo.
+              No se muestra la UI de Mailpit ni el cuerpo de los mensajes (puede contener tokens).
+            </p>
+            <button id="refreshMailBtn" class="btn btn-small" type="button">Actualizar bandeja</button>
+            <ul id="mailList" class="list" aria-live="polite">
+              <li class="muted">Cargando correos…</li>
+            </ul>
+          </section>
+
+          <section class="card" id="challengesCard">
+            <div class="card-head">
+              <h2>Ejercicios</h2>
+              <span class="tag">niveles 0-6</span>
+            </div>
+            <p class="muted">Resumen de <code>docs/coding-challenges.md</code> con ejemplos <code>curl</code>, JavaScript y Kotlin.</p>
+            <div id="challengeList" class="challenges" aria-live="polite">
+              <p class="muted">Cargando desafíos…</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <span>Sin frameworks ni CDN: HTML, CSS y JavaScript vanilla servidos por NestJS en <code>/portal</code>.</span>
+    </footer>
+  </body>
+</html>

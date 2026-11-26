@@ -11,7 +11,7 @@ Archivos:
 
 1. En Postman: **Import → Upload Files** y selecciona ambos archivos JSON (también puedes arrastrar la carpeta `postman/`).
 2. En el selector de environment (arriba a la derecha) elige **Backend Prácticas - Local (desarrollo)**.
-3. Comprueba las variables `baseUrl` = `http://localhost:3100/api/v1` y `hostUrl` = `http://localhost:3100`. Además de los IDs de las etapas anteriores, están `orderId`, `paymentId`, `idempotencyKey` (Etapa 3) y `notificationId`, `jobId`, `roomId`, `csrfToken`, `webRefreshToken` (Etapa 4).
+3. Comprueba las variables `baseUrl` = `http://localhost:3100/api/v1` y `hostUrl` = `http://localhost:3100`. Además de los IDs de las etapas anteriores, están `orderId`, `paymentId`, `idempotencyKey` (Etapa 3), `notificationId`, `jobId`, `roomId`, `csrfToken`, `webRefreshToken` (Etapa 4) y `portalSpaceId` (portal).
 4. La documentación interactiva de la API está en `http://localhost:3100/docs` (Swagger).
 
 ## Flujo recomendado de ejecución
@@ -54,6 +54,18 @@ La carpeta **Cart & Orders** sigue este orden (usa el `productId` autopoblado po
 > Los scripts de estas cuatro carpetas usan el mismo helper `setVar` que el resto de la colección: escriben en el environment cuando hay uno seleccionado y, si no, en las variables de la collection. Así `notificationId`, `jobId`, `roomId` y `csrfToken` se resuelven con el environment recomendado en lugar de quedar vacíos.
 
 > En Postman las cookies se guardan en la *Cookie jar*, pero los scripts leen el valor de `Set-Cookie` y lo escriben en `webRefreshToken`/`csrfToken` porque las peticiones usan una cabecera `Cookie` explícita. Tras *Obtener CSRF*, vuelve a ejecutar *Renovar sesión web* para usar el token rotado. Si tu jar tiene cookies de otra sesión, limpia la jar o usa el environment recién importado.
+
+## Portal del estudiante
+
+La carpeta **Portal** contiene los requests de la UI disponible en `http://localhost:3100/portal`:
+
+1. **UI del portal · GET {{hostUrl}}/portal** (sin Bearer) comprueba que la página HTML se sirve desde la propia app.
+2. **Manifiesto** expone `apiBaseUrl`, `swaggerUrl`, descargas, los 12 escenarios reales y los niveles 0-6.
+3. **Espacios seleccionables** autopuebla `portalSpaceId` con el espacio activo (personal por defecto). Para crear un sandbox o un equipo usa los requests existentes de **Spaces & Roles › Crear sandbox anónimo / Crear espacio de equipo**.
+4. **Guía**, **Descargar collection** y **Descargar environment** devuelven archivos (Markdown/JSON). **Requieren `Authorization: Bearer`**: el portal los obtiene con `fetch` y un `Blob`, porque un enlace `<a>` normal no envía la cabecera. En Postman usa los requests de la carpeta; el body se descarga con *Save response → Save to a file* o se valida con el script de test.
+5. **Mis correos · GET {{baseUrl}}/mail/me** muestra la bandeja **solo del usuario autenticado**. El backend filtra por `to:<email>` y vuelve a comprobar los destinatarios; la UI completa de Mailpit no está expuesta. Los mensajes no incluyen cuerpo ni `snippet` (evitan filtrar tokens de verificación/recuperación).
+
+> Los correos de prueba se generan, por ejemplo, con **Auth › Register**, **Auth › Forgot password** o verificando el usuario sembrado. Para verlos en el portal, inicia sesión web con **Auth › Login web** (`Web Auth (cookies/CSRF)`) y abre el panel *Mis correos de prueba*. El login web rellena la *Cookie jar* de Postman y guarda `webRefreshToken`/`csrfToken` en el environment; **Renovar sesión web** y **Logout web** siguen enviando la cabecera `Cookie` explícita y `X-CSRF-Token` sin Bearer. Si tu jar tiene cookies de otra sesión, límpiala antes de repetir el flujo.
 
 > Postman no sustituye al cliente WebSocket: la carpeta **Realtime** documenta las salas y el historial REST, pero los eventos se observan con un cliente Socket.IO. Ejemplo mínimo (Node, `npm i socket.io-client`):
 >
