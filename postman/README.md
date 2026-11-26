@@ -89,6 +89,19 @@ El `docker-compose` publica la app en `http://localhost:3100` porque `.env` (y l
 - `baseUrl` → `http://localhost:<PUERTO>/api/v1`
 - `hostUrl` → `http://localhost:<PUERTO>` (para `/health/live` y `/health/ready`)
 
+## Usar la URL pública de Cloudflare Tunnel
+
+El script `scripts/start-with-public-url.mjs` crea un **quick tunnel anónimo** con `cloudflared tunnel --url http://127.0.0.1:$PORT` y muestra una URL temporal `https://xxxx.trycloudflare.com` (cambia en cada ejecución; no usa tokens ni config de Cloudflare). Si arrancas con `./start.sh`, abre el túnel a mano apuntando a `APP_HOST_PORT`: `cloudflared tunnel --url http://127.0.0.1:3100`.
+
+Con la URL impresa en la terminal:
+
+1. Pégala en `tunnelUrl` (viene con el placeholder `https://<TU-TUNNEL>.trycloudflare.com`; **no es una URL real**).
+2. Copia la misma URL en `hostUrl` (para `/health/live`, `/health/ready`, `/docs` y `/portal`).
+3. Copia la misma URL **más `/api/v1`** en `baseUrl`: `https://xxxx.trycloudflare.com/api/v1`.
+4. Repite los pasos 1-3 cada vez que el túnel genere una URL nueva. Si quieres que los enlaces de correos y el manifiesto del portal usen la URL pública, pon `PUBLIC_BASE_URL=https://xxxx.trycloudflare.com` en `.env` (**sin `/api/v1`**) y reinicia la app.
+
+Los correos de prueba **siguen en local**: la UI de Mailpit es solo `http://127.0.0.1:8025` y no se expone; los estudiantes ven los suyos con `GET {{baseUrl}}/mail/me` en el portal. El túnel solo transporta peticiones HTTP: PostgreSQL, Redis, `.env`, tokens y archivos de configuración de cloudflared nunca se publican; los datos permanecen en los volúmenes Docker de tu máquina. Comparte la URL solo con tus estudiantes y rota el túnel (reinícialo) si se filtra. Ver más en el [README principal](../README.md#exponer-la-api-con-cloudflare-tunnel).
+
 ## Sandbox anónimo (`x-space-id`)
 
 - **Spaces & Roles › Crear sandbox anónimo** (`POST /public/sandboxes`, sin login) guarda el `spaceId` devuelto en `anonymousSpaceId`. Viene con un UUID de alta entropía de ejemplo que se sobrescribe al crear uno real.

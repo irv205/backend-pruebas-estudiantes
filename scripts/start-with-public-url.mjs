@@ -59,7 +59,7 @@ function hasBin(name) {
 
 function killPort(port) {
   if (process.platform === 'win32') {
-    warn('En Windows, detén manualmente el proceso del puerto antes de reiniciar.');
+    warn('No se puede liberar el puerto automáticamente en esta plataforma; detén el proceso manualmente antes de reiniciar.');
     return;
   }
   let pids = '';

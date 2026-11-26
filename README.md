@@ -6,8 +6,9 @@ API REST de práctica construida con **NestJS + TypeScript + Prisma + PostgreSQL
 
 ## Guías
 
-- [Guía de coding challenges para estudiantes](docs/coding-challenges.md)
+- [Guía de coding challenges para estudiantes (índice)](docs/coding-challenges.md) — 24 desafíos, uno por archivo en `docs/challenges/`.
 - [Colección y environment de Postman](postman/README.md)
+- [Exponer la API con Cloudflare Tunnel](#exponer-la-api-con-cloudflare-tunnel) — URL pública para estudiantes; los datos siguen en tu máquina.
 
 ## Decisiones mantenidas
 
@@ -558,51 +559,76 @@ docker compose exec app npm run prisma:generate     # tras editar schema.prisma
 
 La migración `20241125000000_stage2` recrea el enum `MembershipRole` (`LECTOR`, `EDITOR`, `ADMINISTRADOR`), añade `isActive`/`version` a `Category` y crea `Task`, `Subtask`, `FileObject` y `SpaceScenarioConfig`. La migración `20241126000000_stage3` añade los enums `OrderStatus`/`PaymentOutcome`, la columna `duplicateOrder` del simulador y las tablas `Cart`, `CartItem`, `Order`, `OrderItem`, `PaymentSimulation` e `IdempotencyRecord`. La migración `20241127000000_stage4` añade los enums `NotificationType`, `ExportKind` y `ExportStatus`, la columna `failedAsyncJob` de `SpaceScenarioConfig` y las tablas `Notification`, `ChatRoom`, `ChatMember`, `ChatMessage`, `RealtimeEvent` y `ExportJob`. No se reescriben las migraciones anteriores.
 
-## URL pública para compartir con estudiantes (Cloudflare Tunnel)
+## Exponer la API con Cloudflare Tunnel
 
-Para que tus estudiantes accedan al backend sin desplegarlo a un hosting, puedes exponerlo con un **quick tunnel** de Cloudflare (`cloudflared`). La URL generada es temporal (`https://xxxx.trycloudflare.com`) y cambia en cada ejecución.
+Cloudflared abre un **túnel saliente**: el proceso corre en tu máquina y conecta con Cloudflare; las peticiones a `https://xxxx.trycloudflare.com` se reenvían a `http://127.0.0.1:<puerto>` de tu equipo. **No abres puertos entrantes**, no necesitas IP pública y solo se publica HTTP hacia la API: PostgreSQL, Redis y Mailpit siguen siendo internos. Todo se guarda en tu máquina; Cloudflare únicamente transporta peticiones.
 
-### Requisito: instalar `cloudflared`
+> **Lo que hace realmente el código:** `scripts/start-with-public-url.mjs` lanza un **quick tunnel anónimo** con `cloudflared tunnel --url http://127.0.0.1:$PORT`. No hay túnel nombrado, ni `config.yml`, ni token de Cloudflare. La URL `https://*.trycloudflare.com` es aleatoria, se lee de la salida del proceso y cambia en cada ejecución.
 
-- **macOS (Homebrew):** `brew install cloudflare/cloudflare/cloudflared`
-- Otras plataformas: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+### Requisitos
 
-Verifica con `cloudflared --version`. Si no está instalado, los scripts lo detectan y muestran estas instrucciones sin dejar el backend colgado.
+- `cloudflared` instalado. En macOS (Homebrew): `brew install cloudflare/cloudflare/cloudflared`. En otras plataformas: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/. Verifica con `cloudflared --version`.
+- La aplicación corriendo. Dos modos (elige **uno**, no los mezcles):
+  - **Docker (recomendado, ya usado en esta guía):** `./start.sh` y túnel manual hacia `http://127.0.0.1:$APP_HOST_PORT` (3100 por defecto).
+  - **Directo (script Node):** `npm start` / `npm run start:public`, que usa `PORT` (default 3000, **no** `APP_HOST_PORT`).
+- Node 20.18.1 y npm solo para el modo directo; `curl` para comprobar la API.
 
-### Comandos
+Si `cloudflared` no está en el `PATH`, el script avisa y deja el backend funcionando solo en local.
+
+### Comandos exactos (según el script)
 
 ```bash
-# Arranca el backend y pregunta si quieres la URL pública (interactivo)
-npm start
-# Equivalente explícito sin pregunta:
-npm run start:public        # o: npm run start:tunnel
-# Reiniciar (libera el puerto y vuelve a arrancar con el flujo interactivo)
-npm run restart
+# Modo directo: arranca backend y pregunta si quieres el túnel (interactivo)
+npm start                    # = node scripts/start-with-public-url.mjs
+# Equivalente sin pregunta (fija PUBLIC_URL_AUTO=1):
+npm run start:public         # o: npm run start:tunnel
+# Reinicia liberando el puerto y vuelve al flujo interactivo:
+npm run restart              # = node scripts/start-with-public-url.mjs --restart
+
+# Modo Docker: arranca la app y abre el túnel en OTRA terminal
+./start.sh
+cloudflared tunnel --url http://127.0.0.1:3100   # 3100 = APP_HOST_PORT; usa el tuyo
 ```
 
-El flujo:
-1. Compila (`npm run build`) si falta `dist/main.js`.
-2. Arranca el backend (`node dist/main.js`) en `PORT` (default 3000).
-3. Espera a que `/health/ready` responda 200.
-4. Pregunta: `¿Quieres generar la URL pública (Cloudflare Tunnel) para compartir con tus estudiantes? [y/N]`.
-5. Si respondes `y`: lanza `cloudflared tunnel --url http://127.0.0.1:$PORT`, extrae la URL `https://*.trycloudflare.com` y la muestra destacada junto con Swagger/API.
-6. `Ctrl+C` termina limpiamente el túnel y el backend.
+Flujo del script: compila si falta `dist/main.js` → arranca `node dist/main.js` en `PORT` → espera `/health/ready` → pregunta `¿Quieres generar la URL pública (Cloudflare Tunnel) para compartir con tus estudiantes? [y/N]` → si respondes `y`, lanza `cloudflared tunnel --url http://127.0.0.1:$PORT`, extrae la URL y la imprime destacada con Swagger/API/Health. `Ctrl+C` cierra túnel y backend.
 
-Variables de entorno útiles:
-- `PUBLIC_URL_AUTO=1` (o `CLOUDFLARE_TUNNEL_AUTO=1`): genera el túnel sin preguntar.
-- `SKIP_PUBLIC_URL=1` (o `NO_PUBLIC_URL=1`): no genera túnel ni pregunta.
-- `PORT`: puerto del backend (default 3000).
-- `FORCE_BUILD=1`: fuerza la compilación.
-- `SKIP_BUILD=1`: omite la compilación.
+Copia la URL impresa (`https://xxxx.trycloudflare.com`) y úsala en los tres sitios siguientes.
 
-### Advertencias
+### Cómo configurar la URL pública
 
-- La URL es **temporal** y cambia en cada ejecución; no es estable para compartir "para siempre".
-- El quick tunnel **no tiene autenticación**: cualquiera con la URL accede. Úsalo solo para práctica/demo con datos de ejemplo.
-- **No apto para producción** ni para datos sensibles. Cloudflare puede limitar o cerrar túneles sin aviso.
-- El backend corre en tu máquina: si apagas la computadora o cierras la terminal, la URL deja de funcionar.
-- En entornos no interactivos (CI/Docker/sin TTY) el túnel se omite automáticamente, salvo que fuerces con `PUBLIC_URL_AUTO=1`.
-- Si usas Docker Compose, el túnel debe apuntar al puerto **publicado en el host** (`APP_HOST_PORT`, por defecto 3100): `cloudflared tunnel --url http://127.0.0.1:3100`. El flujo automático de `npm start` es para el modo directo (Node en el host).
+1. **`.env` (enlaces generados por la app):** `PUBLIC_BASE_URL=https://xxxx.trycloudflare.com`. Escribe **solo la raíz, sin `/api/v1`**: el código añade el sufijo (`${PUBLIC_BASE_URL}/api/v1/...`, `${PUBLIC_BASE_URL}/docs`, `${PUBLIC_BASE_URL}/portal`). Tras cambiarlo, reinicia la app (`docker compose restart app` en Docker; en el modo directo, detén y vuelve a ejecutar el script).
+2. **Postman:** `tunnelUrl = https://xxxx.trycloudflare.com`, `hostUrl = https://xxxx.trycloudflare.com` y `baseUrl = https://xxxx.trycloudflare.com/api/v1`. Cambia los tres cada vez que el túnel dé una URL nueva. Consulta [postman/README.md](postman/README.md#usar-la-url-pública-de-cloudflare-tunnel).
+3. **Portal y Swagger:** con esos valores, abre `https://xxxx.trycloudflare.com/portal` y `https://xxxx.trycloudflare.com/docs`. El manifiesto del portal y los enlaces de los correos usan `PUBLIC_BASE_URL`, así que sin el paso 1 esos enlaces seguirán apuntando a `localhost`.
+
+### Qué NO exponer
+
+- La UI de **Mailpit** (`http://127.0.0.1:8025`): es solo del host; el portal lee los correos por `/api/v1/mail/me`.
+- **PostgreSQL, Redis, tokens JWT, `.env` ni archivos de configuración/credenciales de cloudflared.** El túnel solo publica el puerto HTTP de la API.
+
+### Persistencia
+
+Los datos siguen en los volúmenes Docker de tu máquina (`postgres_data`, `mailpit_data`, `files_data`, `redis_data`), no en la nube. Cloudflare no almacena tu base ni tus archivos: solo transporta peticiones. Los [backups](#backup-y-restore) se siguen haciendo en local.
+
+### Seguridad y recomendaciones
+
+- La URL es **temporal y aleatoria**: cada reinicio genera una nueva; trátala como un secreto compartido solo con tus estudiantes. Si se filtra, reinicia el túnel para rotarla y actualiza `.env` y Postman.
+- El quick tunnel **no tiene autenticación**: cualquiera con la URL accede. Úsalo solo para práctica/demo con datos de ejemplo; para un despliegue real, migrar a un túnel nombrado con **Cloudflare Access** (config/credenciales en local, fuera del repo).
+- No compartas correos reales, contraseñas ni tokens en capturas o logs, y no subas `.env`, tokens ni config de cloudflared a Git (`.env` ya está gitignored).
+- **No apto para producción** ni datos sensibles. Cloudflare puede limitar o cerrar túneles sin aviso.
+- El backend corre en tu máquina: si la apagas o cierras la terminal, la URL deja de funcionar.
+- En entornos sin TTY (CI/Docker) el túnel se omite, salvo que se fuerce con `PUBLIC_URL_AUTO=1`.
+
+### Variables de entorno del script
+
+| Variable | Efecto real |
+|---|---|
+| `PUBLIC_URL_AUTO=1` / `CLOUDFLARE_TUNNEL_AUTO=1` / `START_WITH_PUBLIC_URL=1` | Genera el túnel sin preguntar. |
+| `SKIP_PUBLIC_URL=1` / `NO_PUBLIC_URL=1` / `PUBLIC_URL=0` | No crea túnel ni pregunta. |
+| `PORT` | Puerto del backend en modo directo (default 3000). Distinto de `APP_HOST_PORT`. |
+| `READY_TIMEOUT_MS` | Espera máxima a `/health/ready` en el script (default 60000). |
+| `FORCE_BUILD=1` / `SKIP_BUILD=1` | Fuerza u omite `npm run build`. |
+
+No hay variables de token ni de nombre de túnel: el quick tunnel no las usa. Plantilla comentada en [.env.example](.env.example).
 
 ## Solución de problemas
 
