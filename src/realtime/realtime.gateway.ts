@@ -252,7 +252,7 @@ export class RealtimeGateway
         throw error;
       }
     }
-    throw new Error('No se pudo asignar un número de secuencia a la mensaje.');
+    throw new Error('No se pudo asignar un número de secuencia al mensaje.');
   }
 
   private bearerFromHeader(header: string | undefined): string | undefined {

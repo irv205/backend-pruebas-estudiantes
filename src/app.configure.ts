@@ -43,7 +43,7 @@ export function configureApp(app: INestApplication): void {
   const swagger = new DocumentBuilder()
     .setTitle('Backend de práctica para estudiantes')
     .setDescription(
-      'API REST de práctica (Etapas 1-3). Prefijo `/api/v1`. Usa `x-space-id` para el sandbox ' +
+      'API REST de práctica (Etapas 1-4). Prefijo `/api/v1`. Usa `x-space-id` para el sandbox ' +
         'anónimo en `/public/*` o para seleccionar un espacio de equipo; usa ' +
         '`Authorization: Bearer <accessToken>` para el espacio personal. Incluye categorías, ' +
         'tareas, roles, archivos (S3/MinIO o local), carrito, pedidos con stock transaccional, ' +
