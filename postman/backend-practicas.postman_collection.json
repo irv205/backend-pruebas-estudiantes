@@ -1,0 +1,4476 @@
+{
+  "info": {
+    "_postman_id": "7f1c9e64-3a2b-4f81-9d0e-2c6b5a8f4e11",
+    "name": "Backend de prácticas (Etapas 1-3)",
+    "description": "Collection del backend NestJS de prácticas (Etapas 1-3). Prefijo global /api/v1; health fuera del prefijo.\nEjecuta primero Auth › Login para poblar accessToken/refreshToken. Los IDs se autopueblan con los scripts de test.\nUsa x-space-id={{anonymousSpaceId}} para el sandbox anónimo y x-space-id={{spaceId}} para espacios de equipo.\nEtapa 3: la carpeta Cart & Orders calcula totales en servidor, exige Idempotency-Key y simula pagos; el escenario duplicateOrder del simulador fuerza una clave repetida en POST /orders.\nNo incluye secretos de producción: las credenciales del environment son solo del seed de desarrollo.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Liveness · GET /health/live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hostUrl}}/health/live",
+              "host": [
+                "{{hostUrl}}"
+              ],
+              "path": [
+                "health",
+                "live"
+              ],
+              "query": []
+            },
+            "description": "Fuera del prefijo /api/v1. Comprueba solo que el proceso está vivo; responde { status: \"ok\" }."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Readiness · GET /health/ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hostUrl}}/health/ready",
+              "host": [
+                "{{hostUrl}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ],
+              "query": []
+            },
+            "description": "Fuera del prefijo /api/v1. Incluye comprobación de PostgreSQL ({ database: \"up\" }) o 503 si caída."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Endpoints operativos fuera de /api/v1."
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Registrar cuenta (crea espacio personal)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ],
+              "query": []
+            },
+            "description": "Crea usuario + espacio personal. Respuesta { data: { user, tokens } }. Contraseña: 8-72 chars con letras y números. 409 si el email ya existe.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nuevo.estudiante@practicas.local\",\n  \"password\": \"Estudiante.123\",\n  \"name\": \"Estudiante Nuevo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "setVar('accessToken', j.data.tokens.accessToken);",
+                  "setVar('refreshToken', j.data.tokens.refreshToken);",
+                  "setVar('userId', j.data.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (pobla accessToken/refreshToken)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ],
+              "query": []
+            },
+            "description": "Credenciales de desarrollo sembradas: estudiante@practicas.local / Estudiante.123. Guarda accessToken, refreshToken y userId para los demás requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Tokens y usuario presentes', () => { pm.expect(j.data.tokens).to.have.property('accessToken'); pm.expect(j.data.tokens).to.have.property('refreshToken'); pm.expect(j.data.user).to.have.property('id'); });",
+                  "setVar('accessToken', j.data.tokens.accessToken);",
+                  "setVar('refreshToken', j.data.tokens.refreshToken);",
+                  "setVar('userId', j.data.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh (rota y guarda nuevos tokens)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ],
+              "query": []
+            },
+            "description": "Refresh rotatorio y revocable: el token usado queda invalidado. Guarda el nuevo par de tokens.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "setVar('previousRefreshToken', pm.variables.get('refreshToken') || '');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Nuevos tokens presentes', () => { pm.expect(j.data.tokens).to.have.property('accessToken'); pm.expect(j.data.tokens).to.have.property('refreshToken'); });",
+                  "setVar('accessToken', j.data.tokens.accessToken);",
+                  "setVar('refreshToken', j.data.tokens.refreshToken);",
+                  "pm.test('Refresh token rotado', () => { const prev = pm.variables.get('previousRefreshToken'); if (prev) pm.expect(j.data.tokens.refreshToken).to.not.eql(prev); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout (revoca refresh actual)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ],
+              "query": []
+            },
+            "description": "204 sin cuerpo. Revoca el refresh token enviado; después de esto vuelve a ejecutar Login.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Solicitar recuperación de contraseña",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forgot-password"
+              ],
+              "query": []
+            },
+            "description": "Envía el token por correo a Mailpit (entorno de desarrollo).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Restablecer contraseña con token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ],
+              "query": []
+            },
+            "description": "Requiere el token de un solo uso recibido por correo. Copia el token real en la variable de abajo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"<TOKEN_DE_UN_SOLO_USO>\",\n  \"password\": \"Nueva.12345\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verificar correo con token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-email"
+              ],
+              "query": []
+            },
+            "description": "Requiere el token de verificación recibido por correo (Mailpit).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"<TOKEN_DE_VERIFICACION>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Obtener mi perfil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ],
+              "query": []
+            },
+            "description": "Perfil del usuario autenticado ({ data: User })."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar mi perfil",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ],
+              "query": []
+            },
+            "description": "Campos opcionales: name, avatarUrl o avatarFileId (UUID de un archivo subido con kind=AVATAR).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Estudiante Practicón\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subir/reemplazar avatar (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/avatar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "avatar"
+              ],
+              "query": []
+            },
+            "description": "Campo `avatar` (binary). El objeto anterior se elimina. Selecciona un archivo en la pestaña Body → form-data.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "avatar",
+                  "type": "file",
+                  "src": null,
+                  "description": "Selecciona un archivo local en Postman"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar contraseña",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "password"
+              ],
+              "query": []
+            },
+            "description": "Revoca las demás sesiones. Tras cambiarla, vuelve a ejecutar Login con la nueva contraseña.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{password}}\",\n  \"newPassword\": \"Nueva.12345\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar mi cuenta (DESTRUCTIVO)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ],
+              "query": []
+            },
+            "description": "ATENCIÓN: elimina la cuenta y todos sus datos en cascada. Requiere confirmar con la contraseña actual.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Spaces & Roles",
+      "item": [
+        {
+          "name": "Mi espacio personal",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "me"
+              ],
+              "query": []
+            },
+            "description": "Devuelve id, slug, type, name y createdAt del espacio personal del usuario."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reiniciar mi espacio personal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/me/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "me",
+                "reset"
+              ],
+              "query": []
+            },
+            "description": "Borra solo los datos del espacio personal (productos, categorías, tareas, archivos y notas)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear espacio de equipo (autopuebla spaceId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/teams",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "teams"
+              ],
+              "query": []
+            },
+            "description": "El creador queda como ADMINISTRADOR. Guarda el id en {{spaceId}} para los requests de roles y scenario(s).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Equipo de prácticas\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('spaceId', j.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar miembros del equipo (ADMINISTRADOR)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/{{spaceId}}/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "{{spaceId}}",
+                "members"
+              ],
+              "query": []
+            },
+            "description": "Solo ADMINISTRADOR. Usa {{spaceId}} creado arriba."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invitar miembro registrado (ADMINISTRADOR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/{{spaceId}}/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "{{spaceId}}",
+                "members"
+              ],
+              "query": []
+            },
+            "description": "El usuario invitado debe estar registrado previamente. role: LECTOR | EDITOR | ADMINISTRADOR.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"invitado@practicas.local\",\n  \"role\": \"EDITOR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('memberId', j.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar rol de miembro (ADMINISTRADOR)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/{{spaceId}}/members/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "{{spaceId}}",
+                "members",
+                "{{userId}}"
+              ],
+              "query": []
+            },
+            "description": "Roles: LECTOR (solo lectura), EDITOR (CRUD de recursos), ADMINISTRADOR (miembros y resets). Prueba con {{userId}} de otro usuario.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"LECTOR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remover miembro (ADMINISTRADOR)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/{{spaceId}}/members/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "{{spaceId}}",
+                "members",
+                "{{userId}}"
+              ],
+              "query": []
+            },
+            "description": "Solo ADMINISTRADOR. 204 sin cuerpo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reiniciar espacio de equipo (ADMINISTRADOR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/{{spaceId}}/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "{{spaceId}}",
+                "reset"
+              ],
+              "query": []
+            },
+            "description": "Borra recursos, archivos y escenarios del equipo; no afecta otros espacios."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear sandbox anónimo (autopuebla anonymousSpaceId)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/sandboxes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "sandboxes"
+              ],
+              "query": []
+            },
+            "description": "Sin login. Devuelve un spaceId de alta entropía con TTL. Se guarda en {{anonymousSpaceId}} para usar como cabecera x-space-id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "setVar('anonymousSpaceId', j.data.spaceId);",
+                  "pm.test('spaceId presente', () => pm.expect(j.data).to.have.property('spaceId'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reiniciar sandbox anónimo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/sandboxes/{{anonymousSpaceId}}/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "sandboxes",
+                "{{anonymousSpaceId}}",
+                "reset"
+              ],
+              "query": []
+            },
+            "description": "Reinicia el sandbox indicado sin afectar otros espacios. También acepta el slug del sandbox."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Restaurar demo pública",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/sandboxes/demo-publico/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "sandboxes",
+                "demo-publico",
+                "reset"
+              ],
+              "query": []
+            },
+            "description": "La demo pública (slug demo-publico) es de solo lectura pero puede restaurarse por esta vía pública."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "Listar categorías (paginado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories?page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Filtros opcionales: search, isActive, sort=name|createdAt|updatedAt, order=asc|desc."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Productos de una categoría (paginado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}/products?page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Productos de {{categoryId}} dentro del espacio autorizado."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle de categoría",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
+              ],
+              "query": []
+            },
+            "description": "Devuelve { data: Category }."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear categoría (autopuebla categoryId/version)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ],
+              "query": []
+            },
+            "description": "Nombre único por espacio. Guarda categoryId y version para los requests de edición.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tecnología\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('categoryId', j.data.id);",
+                  "setVar('version', j.data.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar categoría (usa {{version}})",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
+              ],
+              "query": []
+            },
+            "description": "Control de concurrencia optimista: version debe coincidir. Actualiza {{version}} con la respuesta.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": \"{{version}}\",\n  \"name\": \"Tecnología y software\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "setVar('version', pm.response.json().data.version);",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar categoría con versión obsoleta (409)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
+              ],
+              "query": []
+            },
+            "description": "Prueba negativa: envía version=999 para provocar 409 VERSION_CONFLICT con { error: { code, message }, requestId }.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 999,\n  \"name\": \"Cambio que debe fallar\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409 VERSION_CONFLICT', () => { pm.response.to.have.status(409); const j = pm.response.json(); pm.expect(j.error.code).to.eql('VERSION_CONFLICT'); pm.expect(j).to.have.property('requestId'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar categoría",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
+              ],
+              "query": []
+            },
+            "description": "204 sin cuerpo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Listar productos (paginado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products?page=1&limit=10&sort=name&order=asc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "sort",
+                  "value": "name"
+                },
+                {
+                  "key": "order",
+                  "value": "asc"
+                }
+              ]
+            },
+            "description": "Filtros: search, status=ACTIVE|INACTIVE, categoryId, sort=name|price|stock|createdAt|updatedAt, order."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle de producto",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ],
+              "query": []
+            },
+            "description": "Devuelve { data: Product } con su versión actual."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear producto (autopuebla productId/version)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": []
+            },
+            "description": "price es entero en unidad mínima (centavos). Currency ISO de 3 letras. Guarda productId y version.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Laptop de prácticas\",\n  \"description\": \"Equipo de prueba para la API\",\n  \"price\": 1250000,\n  \"currency\": \"MXN\",\n  \"stock\": 5,\n  \"status\": \"ACTIVE\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"images\": [\n    \"https://example.com/laptop.png\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('productId', j.data.id);",
+                  "setVar('version', j.data.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar producto (usa {{version}})",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ],
+              "query": []
+            },
+            "description": "Campos parciales de CreateProductDto + version obligatoria. Actualiza {{version}} con la respuesta.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": \"{{version}}\",\n  \"name\": \"Laptop de prácticas (editada)\",\n  \"stock\": 9\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "setVar('version', pm.response.json().data.version);",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar producto con versión obsoleta (409)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ],
+              "query": []
+            },
+            "description": "Prueba de conflicto de concurrencia: version=999 debe devolver 409 VERSION_CONFLICT.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 999,\n  \"name\": \"Cambio que debe fallar\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409 VERSION_CONFLICT', () => { pm.response.to.have.status(409); const j = pm.response.json(); pm.expect(j.error.code).to.eql('VERSION_CONFLICT'); pm.expect(j).to.have.property('requestId'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar producto",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ],
+              "query": []
+            },
+            "description": "204 sin cuerpo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Public Products",
+      "item": [
+        {
+          "name": "Demo pública: listar productos (sin x-space-id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/products?page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Sin cabecera x-space-id se consulta la demo pública (solo lectura). No enviar Authorization."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Demo pública: detalle de producto",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "products",
+                "{{productId}}"
+              ],
+              "query": []
+            },
+            "description": "Producto de la demo pública; copia un id desde el listado anterior si hace falta."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sandbox anónimo: listar productos (x-space-id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-space-id",
+                "value": "{{anonymousSpaceId}}",
+                "description": "UUID/slug del espacio (sandbox anónimo o equipo)"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/public/products?page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Con x-space-id={{anonymousSpaceId}} se usa el sandbox anónimo (TTL/cuota)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sandbox anónimo: detalle de producto",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-space-id",
+                "value": "{{anonymousSpaceId}}",
+                "description": "UUID/slug del espacio (sandbox anónimo o equipo)"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/public/products/{{publicProductId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "products",
+                "{{publicProductId}}"
+              ],
+              "query": []
+            },
+            "description": "Producto dentro del sandbox anónimo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sandbox anónimo: crear producto",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-space-id",
+                "value": "{{anonymousSpaceId}}",
+                "description": "UUID/slug del espacio (sandbox anónimo o equipo)"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/public/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "products"
+              ],
+              "query": []
+            },
+            "description": "CRUD permitido en sandbox (la demo es solo lectura). Guarda publicProductId y publicVersion.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Producto sandbox\",\n  \"description\": \"Creado sin login\",\n  \"price\": 9900,\n  \"currency\": \"MXN\",\n  \"stock\": 3,\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('publicProductId', j.data.id);",
+                  "setVar('publicVersion', j.data.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sandbox anónimo: editar producto (usa {{publicVersion}})",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-space-id",
+                "value": "{{anonymousSpaceId}}",
+                "description": "UUID/slug del espacio (sandbox anónimo o equipo)"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/public/products/{{publicProductId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "products",
+                "{{publicProductId}}"
+              ],
+              "query": []
+            },
+            "description": "Conflicto 409 si la versión no coincide.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": \"{{publicVersion}}\",\n  \"name\": \"Producto sandbox editado\",\n  \"stock\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "setVar('publicVersion', pm.response.json().data.version);",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sandbox anónimo: eliminar producto",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-space-id",
+                "value": "{{anonymousSpaceId}}",
+                "description": "UUID/slug del espacio (sandbox anónimo o equipo)"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/public/products/{{publicProductId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "products",
+                "{{publicProductId}}"
+              ],
+              "query": []
+            },
+            "description": "204 sin cuerpo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Categorías públicas / sandbox",
+          "item": [
+            {
+              "name": "Demo: listar categorías activas",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/public/categories?page=1&limit=10",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "public",
+                    "categories"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "description": "Sin x-space-id se usa la demo pública (solo categorías ACTIVAS). Pasa x-space-id={{anonymousSpaceId}} para el sandbox."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Demo: productos de una categoría",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/public/categories/{{categoryId}}/products?page=1&limit=10",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "public",
+                    "categories",
+                    "{{categoryId}}",
+                    "products"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "description": "Productos activos de la demo pública (o del sandbox si se envía x-space-id)."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Demo: detalle de categoría",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/public/categories/{{categoryId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "public",
+                    "categories",
+                    "{{categoryId}}"
+                  ],
+                  "query": []
+                },
+                "description": "Devuelve { data: Category }."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Sandbox: crear categoría",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-space-id",
+                    "value": "{{anonymousSpaceId}}",
+                    "description": "UUID/slug del espacio (sandbox anónimo o equipo)"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/public/categories",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "public",
+                    "categories"
+                  ],
+                  "query": []
+                },
+                "description": "La demo pública es solo lectura; con x-space-id de sandbox se permite CRUD. Guarda publicCategoryId/publicCategoryVersion.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Categoría sandbox\",\n  \"isActive\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                      "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                      "const j = pm.response.json();",
+                      "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                      "setVar('publicCategoryId', j.data.id);",
+                      "setVar('publicCategoryVersion', j.data.version);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Sandbox: editar categoría (usa {{publicCategoryVersion}})",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "x-space-id",
+                    "value": "{{anonymousSpaceId}}",
+                    "description": "UUID/slug del espacio (sandbox anónimo o equipo)"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/public/categories/{{publicCategoryId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "public",
+                    "categories",
+                    "{{publicCategoryId}}"
+                  ],
+                  "query": []
+                },
+                "description": "Version obligatoria; conflicto 409 si no coincide.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"version\": \"{{publicCategoryVersion}}\",\n  \"name\": \"Categoría sandbox editada\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Sandbox: eliminar categoría",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-space-id",
+                    "value": "{{anonymousSpaceId}}",
+                    "description": "UUID/slug del espacio (sandbox anónimo o equipo)"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/public/categories/{{publicCategoryId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "public",
+                    "categories",
+                    "{{publicCategoryId}}"
+                  ],
+                  "query": []
+                },
+                "description": "204 sin cuerpo."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "description": "Endpoints reales de /public/categories (no existen en otra carpeta)."
+        }
+      ],
+      "description": "Demo pública (solo lectura) y sandboxes anónimos vía x-space-id. Incluye subcarpeta con /public/categories."
+    },
+    {
+      "name": "Notes",
+      "item": [
+        {
+          "name": "Listar notas propias (paginado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notes?page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notes"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Filtros: search, tags (separadas por coma), isFavorite, isArchived, sort=createdAt|updatedAt|title, order."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle de nota",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notes/{{noteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notes",
+                "{{noteId}}"
+              ],
+              "query": []
+            },
+            "description": "Solo notas propias del usuario."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear nota (autopuebla noteId/version)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notes"
+              ],
+              "query": []
+            },
+            "description": "Guarda noteId y version. color hexadecimal #RRGGBB; tags máximo 10.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Nota de prueba\",\n  \"content\": \"Contenido de ejemplo\",\n  \"tags\": [\n    \"api\",\n    \"postman\"\n  ],\n  \"color\": \"#3B82F6\",\n  \"isFavorite\": false,\n  \"isArchived\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('noteId', j.data.id);",
+                  "setVar('version', j.data.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar nota (usa {{version}})",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notes/{{noteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notes",
+                "{{noteId}}"
+              ],
+              "query": []
+            },
+            "description": "Version obligatoria; si no coincide responde 409 VERSION_CONFLICT.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": \"{{version}}\",\n  \"title\": \"Nota de prueba editada\",\n  \"isFavorite\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "setVar('version', pm.response.json().data.version);",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar nota con versión obsoleta (409)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notes/{{noteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notes",
+                "{{noteId}}"
+              ],
+              "query": []
+            },
+            "description": "Prueba de conflicto: version=999 → 409 VERSION_CONFLICT.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 999,\n  \"title\": \"Cambio que debe fallar\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409 VERSION_CONFLICT', () => { pm.response.to.have.status(409); const j = pm.response.json(); pm.expect(j.error.code).to.eql('VERSION_CONFLICT'); pm.expect(j).to.have.property('requestId'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar nota",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notes/{{noteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notes",
+                "{{noteId}}"
+              ],
+              "query": []
+            },
+            "description": "204 sin cuerpo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "Listar tareas (paginado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks?page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Filtros: status=TODO,IN_PROGRESS; priority=LOW,MEDIUM,HIGH,URGENT; dueBefore, dueAfter, search, mine, sort, order."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle de tarea con subtareas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}"
+              ],
+              "query": []
+            },
+            "description": "Devuelve la tarea y sus subtareas en { data }."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear tarea con subtareas (autopuebla taskId/version)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks"
+              ],
+              "query": []
+            },
+            "description": "Guarda taskId y version. Transiciones: TODO → IN_PROGRESS → DONE/CANCELLED.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Tarea de prueba\",\n  \"description\": \"Ejemplo con subtareas\",\n  \"priority\": \"MEDIUM\",\n  \"status\": \"TODO\",\n  \"dueAt\": \"2026-12-31T12:00:00.000Z\",\n  \"subtasks\": [\n    {\n      \"title\": \"Subtarea 1\"\n    },\n    {\n      \"title\": \"Subtarea 2\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('taskId', j.data.id);",
+                  "setVar('version', j.data.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar tarea (usa {{version}})",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}"
+              ],
+              "query": []
+            },
+            "description": "Transición válida TODO → IN_PROGRESS. Actualiza {{version}} con la respuesta.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": \"{{version}}\",\n  \"status\": \"IN_PROGRESS\",\n  \"title\": \"Tarea en progreso\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "setVar('version', pm.response.json().data.version);",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar tarea con versión obsoleta (409)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}"
+              ],
+              "query": []
+            },
+            "description": "Conflicto 409 por versión desactualizada (o transición inválida).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 999,\n  \"status\": \"DONE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409 VERSION_CONFLICT', () => { pm.response.to.have.status(409); const j = pm.response.json(); pm.expect(j.error.code).to.eql('VERSION_CONFLICT'); pm.expect(j).to.have.property('requestId'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Añadir subtarea (autopuebla subtaskId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}/subtasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "subtasks"
+              ],
+              "query": []
+            },
+            "description": "Crea una subtarea dentro de {{taskId}}. Guarda subtaskId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Subtarea añadida después\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('subtaskId', j.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar subtarea",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}/subtasks/{{subtaskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "subtasks",
+                "{{subtaskId}}"
+              ],
+              "query": []
+            },
+            "description": "Campos opcionales: title, isDone.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Subtarea completada\",\n  \"isDone\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar subtarea",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}/subtasks/{{subtaskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "subtasks",
+                "{{subtaskId}}"
+              ],
+              "query": []
+            },
+            "description": "204 sin cuerpo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar tarea",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}"
+              ],
+              "query": []
+            },
+            "description": "204 sin cuerpo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Files",
+      "item": [
+        {
+          "name": "Subir archivo (multipart, autopuebla fileId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "files"
+              ],
+              "query": []
+            },
+            "description": "multipart/form-data con campo `file` (binary) y `kind` opcional: AVATAR | IMAGE | DOCUMENT | OTHER. Guarda fileId. Storage local activo (files_data); MinIO comentado.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": null,
+                  "description": "Selecciona un archivo local en Postman"
+                },
+                {
+                  "key": "kind",
+                  "type": "text",
+                  "value": "DOCUMENT",
+                  "description": "AVATAR | IMAGE | DOCUMENT | OTHER"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Respuesta con id', () => pm.expect(j.data).to.have.property('id'));",
+                  "setVar('fileId', j.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar metadatos de archivos (paginado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/files?page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "files"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "{ data, meta } con page, limit, total, totalPages."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listado paginado: data[] y meta', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.be.an('object'); pm.expect(j.meta).to.include.all.keys(['page', 'limit', 'total', 'totalPages']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Metadatos de archivo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/files/{{fileId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "files",
+                "{{fileId}}"
+              ],
+              "query": []
+            },
+            "description": "Devuelve { data: File } con mimeType, tamaño y objeto."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuerpo con data', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Descargar archivo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/files/{{fileId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "files",
+                "{{fileId}}",
+                "download"
+              ],
+              "query": []
+            },
+            "description": "Descarga autorizada (o URL prefirmada si S3 estuviera configurado). Respuesta binaria con Content-Disposition inline."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Tiene Content-Type', () => pm.expect(pm.response.headers.has('Content-Type')).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar archivo",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/files/{{fileId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "files",
+                "{{fileId}}"
+              ],
+              "query": []
+            },
+            "description": "Elimina el archivo y su objeto. 204 sin cuerpo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Simulator",
+      "item": [
+        {
+          "name": "Consultar escenarios del espacio personal",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/me/scenarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "me",
+                "scenarios"
+              ],
+              "query": []
+            },
+            "description": "Requiere rol ADMINISTRADOR (manage). Devuelve { data: { spaceId, scenarios: { clave: { active, description } } } }."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Escenarios devueltos', () => { const j = pm.response.json(); pm.expect(j.data).to.have.property('scenarios'); pm.expect(j.data.scenarios).to.have.property('emptyList'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activar/desactivar escenarios (ejemplo real)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/me/scenarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "me",
+                "scenarios"
+              ],
+              "query": []
+            },
+            "description": "Claves reales del código: slowResponse, timeout, temporary503, sessionExpired, insufficientPermission, emptyList, largeVolume, concurrentEdit, rateLimit, invalidFile. Las no enviadas conservan su estado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emptyList\": true,\n  \"slowResponse\": false,\n  \"concurrentEdit\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Escenarios devueltos', () => { const j = pm.response.json(); pm.expect(j.data).to.have.property('scenarios'); pm.expect(j.data.scenarios).to.have.property('emptyList'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activar TODOS los escenarios",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/me/scenarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "me",
+                "scenarios"
+              ],
+              "query": []
+            },
+            "description": "Activa los 10 escenarios implementados (Etapa 2). ATENCIÓN: afecta a las respuestas posteriores; ejecuta después la limpieza.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slowResponse\": true,\n  \"timeout\": true,\n  \"temporary503\": true,\n  \"sessionExpired\": true,\n  \"insufficientPermission\": true,\n  \"emptyList\": true,\n  \"largeVolume\": true,\n  \"concurrentEdit\": true,\n  \"rateLimit\": true,\n  \"invalidFile\": true,\n  \"duplicateOrder\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Escenarios devueltos', () => { const j = pm.response.json(); pm.expect(j.data).to.have.property('scenarios'); pm.expect(j.data.scenarios).to.have.property('emptyList'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Desactivar todos los escenarios (limpieza)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/me/scenarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "me",
+                "scenarios"
+              ],
+              "query": []
+            },
+            "description": "Vuelve a dejar la API estable. Ejecutar siempre después de probar escenarios. Incluye duplicateOrder=false (Etapa 3).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slowResponse\": false,\n  \"timeout\": false,\n  \"temporary503\": false,\n  \"sessionExpired\": false,\n  \"insufficientPermission\": false,\n  \"emptyList\": false,\n  \"largeVolume\": false,\n  \"concurrentEdit\": false,\n  \"rateLimit\": false,\n  \"invalidFile\": false,\n  \"duplicateOrder\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Escenarios devueltos', () => { const j = pm.response.json(); pm.expect(j.data).to.have.property('scenarios'); pm.expect(j.data.scenarios).to.have.property('emptyList'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verificar 429 + Retry-After (rateLimit activo)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products?page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Tras activar rateLimit=true, este listado debe responder 429 con cabecera Retry-After. Si no, el escenario está desactivado."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 429', () => pm.response.to.have.status(429));",
+                  "pm.test('Cabecera Retry-After', () => pm.expect(pm.response.headers.has('Retry-After')).to.be.true);",
+                  "pm.test('error.code RATE_LIMITED', () => pm.expect(pm.response.json().error.code).to.eql('RATE_LIMITED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar escenarios de equipo (ADMINISTRADOR)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/{{spaceId}}/scenarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "{{spaceId}}",
+                "scenarios"
+              ],
+              "query": []
+            },
+            "description": "Solo ADMINISTRADOR del espacio de equipo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Escenarios devueltos', () => { const j = pm.response.json(); pm.expect(j.data).to.have.property('scenarios'); pm.expect(j.data.scenarios).to.have.property('emptyList'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activar escenarios en equipo (ADMINISTRADOR)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/{{spaceId}}/scenarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "{{spaceId}}",
+                "scenarios"
+              ],
+              "query": []
+            },
+            "description": "Activa/desactiva escenarios del equipo con las mismas claves reales.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emptyList\": true,\n  \"rateLimit\": false,\n  \"invalidFile\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Escenarios devueltos', () => { const j = pm.response.json(); pm.expect(j.data).to.have.property('scenarios'); pm.expect(j.data.scenarios).to.have.property('emptyList'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pedido repetido: activar duplicateOrder",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/spaces/me/scenarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "spaces",
+                "me",
+                "scenarios"
+              ],
+              "query": []
+            },
+            "description": "Etapa 3: fuerza la clave duplicate-order-<spaceId> en POST /orders. Límite: solo POST /orders y una clave por espacio.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"duplicateOrder\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Escenario activo', () => pm.expect(pm.response.json().data.scenarios.duplicateOrder.active).to.equal(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pedido repetido: crear pedido dos veces (script)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "description": "Clave persistida por (spaceId, userId, key) en Etapa 3"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ],
+              "query": []
+            },
+            "description": "Con duplicateOrder activo, el script repite el POST y comprueba que vuelve el MISMO pedido (sin doble descuento). Ejecuta después de añadir un item al carrito.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "const getVar = (k) => { try { return pm.environment.get(k) || pm.collectionVariables.get(k); } catch (e) { return pm.collectionVariables.get(k); } };",
+                  "const j = pm.response.json();",
+                  "setVar('orderId', j.data.id);",
+                  "pm.test('Pedido creado en estado PENDING_PAYMENT', () => pm.expect(j.data.status).to.equal('PENDING_PAYMENT'));",
+                  "pm.test('Reintento devuelve el mismo pedido', (done) => {",
+                  "  pm.sendRequest({ url: pm.variables.replaceIn('{{baseUrl}}/orders'), method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getVar('accessToken'), 'Idempotency-Key': getVar('idempotencyKey') },",
+                  "    body: { mode: 'raw', raw: '{}', options: { raw: { language: 'json' } } } },",
+                  "    (err, res) => { pm.expect(err).to.be.undefined; pm.expect(res.code).to.equal(201);",
+                  "      pm.expect(res.json().data.id).to.equal(j.data.id);",
+                  "      pm.expect(res.json().data.status).to.equal(j.data.status); done(); });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cart & Orders",
+      "item": [
+        {
+          "name": "Ver carrito (totales del servidor) · GET /cart",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cart",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart"
+              ],
+              "query": []
+            },
+            "description": "Los totales los calcula el servidor: data.{itemCount,subtotal,total} y meta. El cliente nunca envía total."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Carrito con totales', () => { const j = pm.response.json(); pm.expect(j.data).to.have.property('items'); pm.expect(j.data).to.have.property('total'); pm.expect(j.meta).to.have.property('total'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Añadir item al carrito · POST /cart/items",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cart/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart",
+                "items"
+              ],
+              "query": []
+            },
+            "description": "Body { productId, quantity }. Valida producto visible, stock, cantidad positiva y moneda única.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Total entero en unidad mínima', () => { const j = pm.response.json(); pm.expect(j.data.total).to.be.a('number'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar cantidad · PATCH /cart/items/:productId",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cart/items/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart",
+                "items",
+                "{{productId}}"
+              ],
+              "query": []
+            },
+            "description": "Cambia la cantidad; 409 INSUFFICIENT_STOCK si supera el stock.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cantidad actualizada', () => pm.response.json().data.total >= 0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quitar item · DELETE /cart/items/:productId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cart/items/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart",
+                "items",
+                "{{productId}}"
+              ],
+              "query": []
+            },
+            "description": "Quita una línea del carrito (204)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204 sin cuerpo', () => { pm.response.to.have.status(204); pm.expect(pm.response.text()).to.equal(''); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Vaciar carrito · DELETE /cart",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cart",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart"
+              ],
+              "query": []
+            },
+            "description": "Elimina todas las líneas del carrito (204)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204 sin cuerpo', () => { pm.response.to.have.status(204); pm.expect(pm.response.text()).to.equal(''); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear pedido con Idempotency-Key · POST /orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "description": "Clave persistida por (spaceId, userId, key) en Etapa 3"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ],
+              "query": []
+            },
+            "description": "Crea el pedido desde el carrito: descuenta stock en transacción y guarda snapshot de precios. Genera una clave nueva.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "setVar('idempotencyKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "pm.test('Pedido pendiente con snapshot', () => { pm.expect(j.data).to.include.keys(['id','status','currency','total','items','payments']); pm.expect(j.data.status).to.equal('PENDING_PAYMENT'); pm.expect(j.data.items[0]).to.include.all.keys(['unitPrice','quantity','name','currency']); });",
+                  "setVar('orderId', j.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reintentar mismo pedido (idempotencia) · POST /orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "description": "Clave persistida por (spaceId, userId, key) en Etapa 3"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ],
+              "query": []
+            },
+            "description": "Misma Idempotency-Key: devuelve el mismo id/status y NO descuenta stock dos veces.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const getVar = (k) => { try { return pm.environment.get(k) || pm.collectionVariables.get(k); } catch (e) { return pm.collectionVariables.get(k); } };",
+                  "const j = pm.response.json();",
+                  "pm.test('Mismo pedido', () => pm.expect(j.data.id).to.equal(getVar('orderId')));",
+                  "pm.test('Mismo estado', () => pm.expect(j.data.status).to.equal('PENDING_PAYMENT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin Idempotency-Key (422) · POST /orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ],
+              "query": []
+            },
+            "description": "La cabecera es obligatoria: 422 VALIDATION_ERROR.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error de validación', () => { const j = pm.response.json(); pm.expect(j.error.code).to.equal('VALIDATION_ERROR'); pm.expect(j.error.fields).to.have.property('Idempotency-Key'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar pedidos (filtro status) · GET /orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders?status=PENDING_PAYMENT&page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING_PAYMENT"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Listado paginado; filtros: PENDING_PAYMENT, PAID, FAILED, CANCELLED."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listado paginado', () => { const j = pm.response.json(); pm.expect(j.data).to.be.an('array'); pm.expect(j.meta).to.include.all.keys(['page','limit','total','totalPages']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle de pedido (ítems y pagos) · GET /orders/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}"
+              ],
+              "query": []
+            },
+            "description": "Detalle con items (snapshot) y payments (intentos). Guarda paymentId si hay pagos."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const setVar = (k, v) => { try { pm.environment.set(k, String(v)); } catch (e) { pm.collectionVariables.set(k, String(v)); } };",
+                  "const j = pm.response.json();",
+                  "pm.test('Ítems y pagos', () => { pm.expect(j.data.items).to.be.an('array'); pm.expect(j.data.payments).to.be.an('array'); });",
+                  "if (j.data.payments.length) setVar('paymentId', j.data.payments[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pagar: APPROVED → PAID · POST /orders/:id/pay",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/pay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "pay"
+              ],
+              "query": []
+            },
+            "description": "Aprobado: PAID (el stock ya se descontó al crear el pedido).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"APPROVED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estado PAID', () => pm.expect(pm.response.json().data.status).to.equal('PAID'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pagar: REJECTED → FAILED · POST /orders/:id/pay",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/pay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "pay"
+              ],
+              "query": []
+            },
+            "description": "Rechazado: FAILED y reposición de stock exactamente una vez.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"REJECTED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Pedido fallido', () => pm.expect(pm.response.json().data.status).to.equal('FAILED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pagar: PENDING → reintento · POST /orders/:id/pay",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/pay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "pay"
+              ],
+              "query": []
+            },
+            "description": "Pendiente: mantiene PENDING_PAYMENT y permite reintentar/polling.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"PENDING\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Sigue pendiente', () => pm.expect(pm.response.json().data.status).to.equal('PENDING_PAYMENT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancelar pedido → CANCELLED · POST /orders/:id/cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "JWT de acceso obtenido en Auth › Login"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Cancelado: repone stock una sola vez; desde FAILED/CANCELLED responde 409."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Pedido cancelado', () => pm.expect(pm.response.json().data.status).to.equal('CANCELLED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3100/api/v1",
+      "type": "string",
+      "description": "Prefijo global de la API (APP_HOST_PORT por defecto 3100)."
+    },
+    {
+      "key": "hostUrl",
+      "value": "http://localhost:3100",
+      "type": "string",
+      "description": "Raíz del servidor; health está fuera de /api/v1."
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string",
+      "description": "JWT de acceso, poblado por Auth › Login / Refresh."
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string",
+      "description": "Refresh token rotatorio, poblado por Auth › Login / Refresh."
+    },
+    {
+      "key": "spaceId",
+      "value": "",
+      "type": "string",
+      "description": "ID del espacio de equipo creado en Spaces & Roles."
+    },
+    {
+      "key": "anonymousSpaceId",
+      "value": "9f3c2a7e-5b41-4d0e-8c62-1a7e9d4b6f03",
+      "type": "string",
+      "description": "UUID de ejemplo de alta entropía para sandbox anónimo (se sobrescribe al crear uno)."
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string",
+      "description": "ID del usuario autenticado (o del miembro a gestionar)."
+    },
+    {
+      "key": "productId",
+      "value": "",
+      "type": "string",
+      "description": "ID del producto creado en Products."
+    },
+    {
+      "key": "noteId",
+      "value": "",
+      "type": "string",
+      "description": "ID de la nota creada en Notes."
+    },
+    {
+      "key": "categoryId",
+      "value": "",
+      "type": "string",
+      "description": "ID de la categoría creada en Categories."
+    },
+    {
+      "key": "taskId",
+      "value": "",
+      "type": "string",
+      "description": "ID de la tarea creada en Tasks."
+    },
+    {
+      "key": "fileId",
+      "value": "",
+      "type": "string",
+      "description": "ID del archivo subido en Files."
+    },
+    {
+      "key": "version",
+      "value": "1",
+      "type": "string",
+      "description": "Versión de recurso para PATCH; se sobrescribe con la de la creación/edición."
+    },
+    {
+      "key": "email",
+      "value": "",
+      "type": "string",
+      "description": "Solo desarrollo: se define en el environment."
+    },
+    {
+      "key": "password",
+      "value": "",
+      "type": "string",
+      "description": "Solo desarrollo: se define en el environment."
+    },
+    {
+      "key": "demoSlug",
+      "value": "demo-publico",
+      "type": "string",
+      "description": "Slug de la demo pública (solo lectura)."
+    },
+    {
+      "key": "publicProductId",
+      "value": "",
+      "type": "string",
+      "description": "ID de producto creado en un sandbox público."
+    },
+    {
+      "key": "publicVersion",
+      "value": "1",
+      "type": "string",
+      "description": "Versión del producto del sandbox público."
+    },
+    {
+      "key": "publicCategoryId",
+      "value": "",
+      "type": "string",
+      "description": "ID de categoría creada en un sandbox público."
+    },
+    {
+      "key": "publicCategoryVersion",
+      "value": "1",
+      "type": "string",
+      "description": "Versión de la categoría del sandbox público."
+    },
+    {
+      "key": "subtaskId",
+      "value": "",
+      "type": "string",
+      "description": "ID de la subtarea creada en Tasks."
+    },
+    {
+      "key": "memberId",
+      "value": "",
+      "type": "string",
+      "description": "ID devuelto al invitar un miembro."
+    },
+    {
+      "key": "previousRefreshToken",
+      "value": "",
+      "type": "string",
+      "description": "Uso interno del script de Refresh para comprobar la rotación."
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string",
+      "description": "ID del último pedido creado (Etapa 3)."
+    },
+    {
+      "key": "paymentId",
+      "value": "",
+      "type": "string",
+      "description": "ID del último pago simulado (Etapa 3)."
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "",
+      "type": "string",
+      "description": "Clave de idempotencia de POST /orders; se genera con {{$guid}} y se reutiliza en el reintento."
+    }
+  ]
+}

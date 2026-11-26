@@ -1,0 +1,139 @@
+# Docker Compose — Etapas 1-2 (desarrollo local, una sola instancia de la API).
+# El código vive en el workspace; Docker guarda la EJECUCIÓN y los DATOS en
+# volúmenes nombrados. Copia .env.example a .env antes de arrancar.
+#
+# Nota: Postgres y SMTP NO se publican al host; solo la API (puerto host
+# ${APP_HOST_PORT:-3000} -> contenedor 3000) y la UI de Mailpit (127.0.0.1:8025)
+# tienen puerto publicado.
+
+name: backend-pruebas
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - backend
+    # Sin `ports`: accesible solo desde la red interna.
+
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    restart: unless-stopped
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: 500
+    ports:
+      # UI de correos de prueba SOLO en el host, nunca expuesta a estudiantes.
+      - "127.0.0.1:8025:8025"
+    volumes:
+      - mailpit_data:/data
+    networks:
+      - backend
+    # SMTP interno en 1025 (sin publicar). La API usa SMTP_HOST=mailpit.
+
+  migrate:
+    build:
+      context: .
+      target: development
+    command: ["npm", "run", "prisma:migrate"]
+    env_file: .env
+    volumes:
+      - ./prisma:/app/prisma
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+
+  app:
+    build:
+      context: .
+      target: development
+    command: ["npm", "run", "start:dev"]
+    env_file: .env
+    ports:
+      - "${APP_HOST_PORT:-3000}:3000"
+    volumes:
+      - .:/app
+      # node_modules del contenedor: nunca se mezcla con el del host.
+      - /app/node_modules
+      # Almacenamiento local de archivos (alternativa a MinIO; Etapa 2).
+      - files_data:/app/storage/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      # minio:  # descomenta junto con el servicio minio de arriba
+      #   condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "node -e \"require('http').get('http://127.0.0.1:3000/health/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - backend
+
+  # ── Etapa 2: MinIO (INACTIVO; imagen NO verificable desde este entorno) ───
+  # Docker Hub devolvió `insufficient_scope` para el pull anónimo del tag fijado
+  # y quay.io exige autenticación; por eso el servicio queda COMENTADO.
+  # La API funciona igual con FILES_STORAGE=local (volumen files_data).
+  #
+  # ACTIVACIÓN EXACTA (en tu entorno con acceso al registro):
+  #   1) Verifica: docker manifest inspect minio/minio:RELEASE.2024-10-02T17-50-41Z
+  #   2) Descomenta el bloque `minio:` de abajo y la entrada `minio:` en
+  #      `depends_on` del servicio `app`.
+  #   3) En .env: FILES_STORAGE=s3, S3_ENDPOINT=http://minio:9000,
+  #      MINIO_ROOT_USER/MINIO_ROOT_PASSWORD, S3_ACCESS_KEY/S3_SECRET_KEY,
+  #      S3_BUCKET=practicas y (opcional) S3_PUBLIC_ENDPOINT + S3_PRESIGN=true.
+  #   4) docker compose up -d minio && docker compose up -d --build app
+  #
+  # Endpoint INTERNO: http://minio:9000 (usa la API). Endpoint PÚBLICO: 127.0.0.1:9000
+  # solo para el navegador del administrador; no lo expongas a estudiantes.
+  # minio:
+  #   image: minio/minio:RELEASE.2024-10-02T17-50-41Z
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   environment:
+  #     MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+  #     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+  #   command: server /data --console-address ":9001"
+  #   ports:
+  #     - "127.0.0.1:9000:9000"
+  #     - "127.0.0.1:9001:9001"
+  #   volumes:
+  #     - minio_data:/data
+  #   healthcheck:  # requerido por depends_on: service_healthy
+  #     test: ["CMD", "mc", "ready", "local"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 12
+  #   networks:
+  #     - backend
+
+volumes:
+  postgres_data:
+  mailpit_data:
+  minio_data: # reservado; se usa al activar el servicio minio
+  files_data: # almacenamiento local de archivos cuando FILES_STORAGE=local
+
+networks:
+  backend:
+    driver: bridge

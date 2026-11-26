@@ -1,0 +1,451 @@
+// Esquema de datos — Etapas 1-3
+// Una sola base PostgreSQL compartida; el aislamiento se logra con `spaceId`
+// obligatorio en cada recurso (products, notes, categories, tasks, files,
+// carritos, pedidos e idempotencia).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SpaceType {
+  DEMO // Demo pública: solo lectura, datos de ejemplo
+  SANDBOX // Sandbox anónimo: temporal, con TTL (expiresAt) y cuotas
+  PERSONAL // Espacio personal persistente de un usuario
+  TEAM // Espacio de equipo compartido con roles
+}
+
+// Roles alineados con la propuesta (§ "Roles en espacios de equipo").
+enum MembershipRole {
+  LECTOR // Consultar recursos compartidos
+  EDITOR // Consultar, crear, editar y eliminar recursos
+  ADMINISTRADOR // Gestionar recursos, miembros y reinicios
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum FileKind {
+  AVATAR
+  IMAGE
+  DOCUMENT
+  OTHER
+}
+
+// Etapa 3: ciclo de vida del pedido. El stock se descuenta al crear el pedido.
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  FAILED
+  CANCELLED
+}
+
+// Etapa 3: resultados de los pagos simulados (nunca hay cobros reales).
+enum PaymentOutcome {
+  APPROVED
+  REJECTED
+  PENDING
+}
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
+  passwordHash  String
+  name          String
+  avatarUrl     String?
+  isVerified    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  ownedSpaces         Space[]              @relation("OwnedSpaces")
+  memberships         SpaceMembership[]
+  refreshTokens       RefreshToken[]
+  verificationTokens  VerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+  notes               Note[]
+  products            Product[]            @relation("ProductOwner")
+  tasks               Task[]               @relation("TaskOwner")
+  files               FileObject[]         @relation("FileOwner")
+  resetAudits         SpaceResetAudit[]    @relation("ResetRequestedBy")
+  carts               Cart[]
+  orders              Order[]
+  idempotencyRecords  IdempotencyRecord[]
+}
+
+model Space {
+  id        String     @id @default(uuid()) @db.Uuid
+  slug      String     @unique
+  type      SpaceType
+  name      String
+  ownerId   String?    @db.Uuid
+  owner     User?      @relation("OwnedSpaces", fields: [ownerId], references: [id], onDelete: Cascade)
+  // TTL de sandboxes anónimos; null en espacios persistentes
+  expiresAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  memberships   SpaceMembership[]
+  categories    Category[]
+  products      Product[]
+  notes         Note[]
+  tasks         Task[]
+  files         FileObject[]
+  scenarioConfig SpaceScenarioConfig?
+  resetAudits   SpaceResetAudit[]
+  carts         Cart[]
+  orders        Order[]
+  idempotencyRecords IdempotencyRecord[]
+
+  @@index([type, expiresAt])
+}
+
+model SpaceMembership {
+  id        String         @id @default(uuid()) @db.Uuid
+  spaceId   String         @db.Uuid
+  userId    String         @db.Uuid
+  role      MembershipRole @default(EDITOR)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId])
+  @@index([userId])
+}
+
+// Refresh token opaco, rotatorio y revocable. Solo se guarda el hash SHA-256.
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?   @db.Uuid
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+// Token de verificación de correo: un solo uso y con expiración.
+model VerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Token de recuperación de contraseña: un solo uso y con expiración.
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Category {
+  id        String   @id @default(uuid()) @db.Uuid
+  spaceId   String   @db.Uuid
+  name      String
+  slug      String
+  isActive  Boolean  @default(true)
+  version   Int      @default(1) // Control de concurrencia optimista (409)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  space    Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([spaceId, slug])
+  @@index([spaceId])
+}
+
+model Product {
+  id          String        @id @default(uuid()) @db.Uuid
+  spaceId     String        @db.Uuid
+  ownerId     String?       @db.Uuid // null en productos demo/sandbox
+  name        String
+  description String?
+  price       Int // Importe entero en unidad mínima de la moneda (centavos)
+  currency    String        @default("MXN") @db.Char(3)
+  stock       Int           @default(0)
+  status      ProductStatus @default(ACTIVE)
+  categoryId  String?       @db.Uuid
+  images      String[]      @default([]) // IDs de FileObject (Etapa 2) o referencias externas
+  version     Int           @default(1) // Control de concurrencia optimista (409)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  space    Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  owner    User?     @relation("ProductOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  cartItems CartItem[]
+  // Restrict: el precio comprado es un snapshot histórico; un producto con
+  // pedidos no se elimina sin antes cancelar/esborrar esos pedidos.
+  orderItems OrderItem[]
+
+  @@index([spaceId, status])
+  @@index([spaceId, name])
+}
+
+model Note {
+  id         String   @id @default(uuid()) @db.Uuid
+  spaceId    String   @db.Uuid
+  ownerId    String   @db.Uuid // Cada nota pertenece a un usuario
+  title      String
+  content    String?
+  tags       String[] @default([])
+  color      String?
+  isFavorite Boolean  @default(false)
+  isArchived Boolean  @default(false)
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  owner User  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([spaceId, ownerId])
+  @@index([spaceId, ownerId, isArchived])
+}
+
+// Tareas por espacio con control de versión y transiciones de estado válidas.
+model Task {
+  id          String       @id @default(uuid()) @db.Uuid
+  spaceId     String       @db.Uuid
+  ownerId     String?      @db.Uuid
+  title       String
+  description String?
+  priority    TaskPriority @default(MEDIUM)
+  status      TaskStatus   @default(TODO)
+  dueAt       DateTime?
+  version     Int          @default(1)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  space     Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  owner     User?     @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  subtasks  Subtask[]
+
+  @@index([spaceId, status])
+  @@index([spaceId, priority])
+  @@index([spaceId, dueAt])
+}
+
+model Subtask {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @db.Uuid
+  title     String
+  isDone    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+// Metadatos de objetos subidos. El objeto vive en S3/MinIO o en storage local;
+// `key` incluye siempre el prefijo del espacio (`spaces/<spaceId>/...`).
+model FileObject {
+  id           String   @id @default(uuid()) @db.Uuid
+  spaceId      String   @db.Uuid
+  ownerId      String?  @db.Uuid
+  key          String   @unique
+  originalName String
+  mimeType     String
+  size         Int
+  kind         FileKind @default(OTHER)
+  // Enlace opcional con la entidad que usa el archivo (avatar, producto, nota).
+  entityType   String?
+  entityId     String?  @db.Uuid
+  createdAt    DateTime @default(now())
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  owner User? @relation("FileOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([spaceId])
+  @@index([entityType, entityId])
+}
+
+// Simulador: configuración persistida por espacio. Sin fila = API estable.
+model SpaceScenarioConfig {
+  id                    String   @id @default(uuid()) @db.Uuid
+  spaceId               String   @unique @db.Uuid
+  slowResponse          Boolean  @default(false)
+  timeout               Boolean  @default(false)
+  temporary503          Boolean  @default(false)
+  sessionExpired        Boolean  @default(false)
+  insufficientPermission Boolean @default(false)
+  emptyList             Boolean  @default(false)
+  largeVolume           Boolean  @default(false)
+  concurrentEdit        Boolean  @default(false)
+  rateLimit             Boolean  @default(false)
+  invalidFile           Boolean  @default(false)
+  // Etapa 3: fuerza una clave de idempotencia fija en POST /orders.
+  duplicateOrder        Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+}
+
+// Bitácora de reinicios de espacio (auditoría de práctica).
+model SpaceResetAudit {
+  id          String   @id @default(uuid()) @db.Uuid
+  spaceId     String   @db.Uuid
+  requestedBy String?  @db.Uuid // null en reinicios de sandbox/anónimos
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  space           Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  requestedByUser User? @relation("ResetRequestedBy", fields: [requestedBy], references: [id], onDelete: SetNull)
+
+  @@index([spaceId])
+}
+
+// ── Etapa 3: carrito, pedidos, pagos simulados e idempotencia ───────────────
+
+// Un carrito por (espacio, usuario). Los totales SIEMPRE se calculan en servidor.
+model Cart {
+  id        String     @id @default(uuid()) @db.Uuid
+  spaceId   String     @db.Uuid
+  userId    String     @db.Uuid
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  space Space      @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@unique([spaceId, userId])
+  @@index([spaceId])
+}
+
+model CartItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  cartId    String   @db.Uuid
+  productId String   @db.Uuid
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  // Al borrar un producto, su línea del carrito desaparece con él.
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId])
+  @@index([productId])
+}
+
+// Pedido: `total` y `currency` son el snapshot de la compra; `version` sirve
+// para las transiciones de estado. El stock se descuenta al CREAR el pedido.
+model Order {
+  id             String      @id @default(uuid()) @db.Uuid
+  spaceId        String      @db.Uuid
+  ownerId        String      @db.Uuid
+  status         OrderStatus @default(PENDING_PAYMENT)
+  currency       String      @db.Char(3)
+  total          Int // Unidad mínima de la moneda (centavos)
+  idempotencyKey String
+  // Reposición de stock exactamente una vez (rechazo o cancelación).
+  stockRestored  Boolean     @default(false)
+  version        Int         @default(1)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  space   Space              @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  owner   User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items   OrderItem[]
+  payments PaymentSimulation[]
+
+  @@index([spaceId, ownerId, createdAt])
+  @@index([spaceId, status])
+}
+
+// Precio y nombre comprados: snapshot inmutable, no se recalculan jamás.
+model OrderItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  orderId     String   @db.Uuid
+  productId   String   @db.Uuid
+  quantity    Int
+  unitPrice   Int
+  currency    String   @db.Char(3)
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// Intento de pago simulado; `attempt` es consecutivo por pedido.
+model PaymentSimulation {
+  id        String         @id @default(uuid()) @db.Uuid
+  orderId   String         @db.Uuid
+  outcome   PaymentOutcome
+  attempt   Int
+  message   String?
+  createdAt DateTime       @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, attempt])
+  @@index([orderId])
+}
+
+// Idempotencia persistida: misma clave => misma respuesta, sin efectos duplicados.
+model IdempotencyRecord {
+  id               String   @id @default(uuid()) @db.Uuid
+  spaceId          String   @db.Uuid
+  userId           String   @db.Uuid
+  key              String
+  operation        String
+  responseSnapshot Json
+  createdAt        DateTime @default(now())
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId, key])
+  @@index([spaceId, userId])
+}
