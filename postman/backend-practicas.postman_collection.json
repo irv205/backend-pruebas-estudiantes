@@ -25,7 +25,7 @@
               ],
               "query": []
             },
-            "description": "Fuera del prefijo /api/v1. Comprueba solo que el proceso está vivo; responde { status: \"ok\" }."
+            "description": "Fuera del prefijo /api/v1: usa {{hostUrl}} (raíz), nunca {{baseUrl}}. Si devuelve 404, revisa que hostUrl no incluya /api/v1 y que la URL del túnel siga vigente; responde { status: \"ok\" }."
           },
           "event": [
             {
@@ -56,7 +56,7 @@
               ],
               "query": []
             },
-            "description": "Fuera del prefijo /api/v1. Incluye comprobación de PostgreSQL ({ database: \"up\" }) o 503 si caída."
+            "description": "Fuera del prefijo /api/v1: usa {{hostUrl}} (raíz), nunca {{baseUrl}}. Incluye comprobación de PostgreSQL ({ database: \"up\" }) o 503 si caída; un 404 indica URL mal derivada o túnel cambiado."
           },
           "event": [
             {
@@ -5718,8 +5718,8 @@
           "  if (!m) return null;",
           "  if (m[2].indexOf('@') !== -1) return null;",
           "  const scheme = /^wss?:$/i.test(m[1]) ? 'https' : m[1].toLowerCase();",
-          "  const path = m[3].replace(/\\/+$/, '');",
-          "  if (path && path.toLowerCase() !== '/api/v1') return null;",
+          "  // Se acepta cualquier ruta pegada (raíz, /api/v1, /health/live, /docs...):",
+          "  // solo se conserva el origen para no duplicar nunca /api/v1 en hostUrl.",
           "  return scheme + '://' + m[2].replace(/\\/+$/, '');",
           "};",
           "try {",
